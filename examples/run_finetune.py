@@ -510,7 +510,7 @@ def predict(args, model, tokenizer, prefix=""):
                     inputs["token_type_ids"] = (
                         batch[2] if args.model_type in TOKEN_ID_GROUP else None
                     )  # XLM, DistilBERT, RoBERTa, and XLM-RoBERTa don't use segment_ids
-                outputs = model(**inputs)
+                outputs = model(**inputs) ## inputs is a dict with keys 'input_ids', 'attention_mask', 'labels', 'token_type_ids'(can be None), attention_mask defaults to ones if None, token_type_ids defaulst to zeros, labels are only needed for training
                 _, logits = outputs[:2]
 
             if preds is None:
