@@ -8,6 +8,7 @@ from torch.utils.data import TensorDataset, DataLoader
 from collections import OrderedDict
 import numpy as np
 #import pyqtgraph as pg
+import config
 
 #pg.dbg()
 
@@ -33,20 +34,21 @@ MAX_LENGTH = 101
 #neg_test_file='/home/megan/work/lnc_rna/data/sequences/TIAL1_neg.fa'
 #pos_test_file='/home/megan/work/lnc_rna/code/bert-rbp/RBP_training_data/TIAL1.positive.fa'
 #neg_test_file='/home/megan/work/lnc_rna/code/bert-rbp/RBP_training_data/TIAL1.negative.fa'
-nontrain_tsv_file='/proj/magnuslb/users/mkratz/bert-rbp/datasets/TIAL1/nontraining_sample_finetune/dev.tsv'
-train_tsv_file='/proj/magnuslb/users/mkratz/bert-rbp/datasets/TIAL1/training_sample_finetune/dev.tsv'
+#nontrain_tsv_file='/proj/magnuslb/users/mkratz/bert-rbp/datasets/TIAL1/nontraining_sample_finetune/dev.tsv'
+#train_tsv_file='/proj/magnuslb/users/mkratz/bert-rbp/datasets/TIAL1/training_sample_finetune/dev.tsv'
+#nontrain_tsv_file='/home/megan/work/lnc_rna/code/bert-rbp/datasets/TIAL1/nontraining_sample_finetune/dev.tsv'
 
 
 
 
 #model_path = "/home/megan/work/lnc_rna/code/bert-rbp/datasets/TIAL1/finetuned_model"
-model_path = "/proj/magnuslb/users/mkratz/bert-rbp/datasets/TIAL1/finetuned_model"
-tokenizer = DNATokenizer.from_pretrained(model_path)
+#model_path = "/proj/magnuslb/users/mkratz/bert-rbp/datasets/TIAL1/finetuned_model"
+#tokenizer = DNATokenizer.from_pretrained(model_path)
 
 
 
 
-def load_sequences(f):
+def load_fasta_sequences(f):
     """Given a FASTA file with one or more splices, return a Tensor Dataset for each splice"""
 
     splices = [x for x in SeqIO.parse(f, 'fasta')]
@@ -126,6 +128,13 @@ def load_tsv_sequences(filename):
 
 
 def predict(dataset, model_path):
+    """Make binding predictions for all tensors in the dataset, using the model at model_path.
+    Arguments:
+    dataset    a dictionary of {name:[tensor1, tensor2, ...]}(as produced by load_tsv_sequences or load_fasta_sequences)
+    model_path (str) path to the model to use for prediction
+
+    Returns a dictionary of {name:[prob1, prob2, ...]}
+    """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = BertForSequenceClassification.from_pretrained(model_path)
     model = model.to(device)
@@ -155,7 +164,7 @@ def predict(dataset, model_path):
 
         probs = softmax(torch.tensor(predictions, dtype=torch.float32)).numpy()
 
-        results[name] = probs
+        results[name] = probs[:,1]
 
     return results
 
@@ -167,11 +176,11 @@ def plot_test_probabilities(dataset, label=None):
     keys = list(dataset.keys())[:-1] ## take off the concatenated key
 
     p = pg.plot()
-    p.plot(x=x, y=concatenated[:,1], pen=None, symbol='o', symbolBrush=(255,255,255,100))
+    p.plot(x=x, y=concatenated, pen=None, symbol='o', symbolBrush=(255,255,255,100))
 
     for i,k in enumerate(keys):
         x = 100*i + 50
-        p.plot(x=[x], y=dataset[k][:,1], symbol='o')
+        p.plot(x=[x], y=dataset[k], symbol='o')
 
     p.setLabel('bottom', 'nucleotide')
     p.setLabel('left', 'binding probability')
@@ -180,7 +189,7 @@ def plot_test_probabilities(dataset, label=None):
 
     return p
 
-def plot_probablities(dataset, label):
+def plot_probablities(dataset, label=None):
     p = pg.plot()
     p.setLabel('bottom', 'nucleotide')
     p.setLabel('left', 'binding probability')
@@ -192,14 +201,24 @@ def plot_probablities(dataset, label):
     keys = list(dataset.keys())
     for i, k in enumerate(keys):
         x = np.arange(0, dataset[k].shape[0]) * 10 + 50 ## *10 because we roll a new segment to test every 10 nucleotides, and + 50 to center on the middle of the RNA
-        p.plot(x=x, y=dataset[k][:,1], pen=None, symbol='o', symbolBrush=pens[i%len(pens)], name=k)
+        p.plot(x=x, y=dataset[k], pen=None, symbol='o', symbolBrush=pens[i%len(pens)], name=k)
 
     return p
 
+def plot(probs, label=None):
+    if 'positives' in probs.keys():
+        return plot_nontraining_data(probs, label=label)
+    elif 'concatenated' in probs.keys():
+        return plot_test_probabilities(probs, label=label)
+    else:
+        return plot_probabilities(probs, label)
 
-def mk_probability_histogram(data):
-    h, x = np.histogram(data, bins=100, range=[0,1])
-    return x,h
+def save_probabilities(probs, file_name):
+    raise NotImplemented()
+
+def load_probabilities(file_name):
+    raise NotImplemented()
+
 #pos_data = load_sequences(pos_test_file)
 #neg_data = load_sequences(neg_test_file)
 #oip_data = load_sequences(sequence_file)
@@ -212,11 +231,81 @@ def mk_probability_histogram(data):
 #p_neg = plot_test_probabilities(neg, label="negative test set")
 #oip_plot = plot_probablities(oip, label="OIP5-AS1_splice")
 
-#dataset = load_tsv_sequences(tsv_file)
-training_dataset = load_tsv_sequences(train_tsv_file)
+dataset = load_tsv_sequences(nontrain_tsv_file)
+#training_dataset = load_tsv_sequences(train_tsv_file)
 #probs = predict(dataset, model_path)
-training_probs = predict(training_dataset, model_path)
+#training_probs = predict(training_dataset, model_path)
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+
+    #arguments:
+    #  - RBP - required I think
+    #  - RNA sequences file -- might be able to guess or have a default be the non-training data for the RBP
+    #  - save - whether to save the results to be plotted later
+    #  - plot - whether to try to plot now
+
+    parser.add_argument("--RBP", default=None, type=str, required=True, help="The name of the RNA binding protien (RBP) to use.")
+    parser.add_argument("--sequence_path", default=None, type=str, required=False, help="(optional) The path to the sequence file to use. If not specified, the non-training data for the RBP will be used")
+    parser.add_argument("--save", action="store_true", help="(optional) if true, save binding probabilities as .pk (pickle) files")
+    parser.add_argument("--plot", action="store_true", help="(optional) if true, create plots of probabilites")
+    parser.add_argument("--plot_only", action="store_true", help="(optional) if true, load a previously saved set of probabilities and create plots, requires --probability_path")
+    parser.add_argument("--probability_path", default=None, type=str, help="(optional) path to a previously saved probabilities file (required if --plot_only is True")
+
+    args = parser.parse_args()
+
+    if args.plot_only:
+        import pyqtgraph as pg
+        print("need to implement loading and plotting probabilities")
+        probs = load_probabilities(args.probability_path)
+        plot(probs)
+        quit()
+
+    #############################################################
+    # Everything below only happens if --plot_only is not True  #
+    #############################################################
+
+    ### Make sure we have a path to RBP
+    dataset_path = os.path.normpath(config.dataset_directory)
+    if dataset_path is None:
+        raise Exception('No dataset_directory specified in config.yml. Please fill in the path to the RBP datasets directory')
+
+    if args.RBP is None:
+        raise Exception('No RBP specified. Options are: %s' %str(os.listdir(dataset_path)))
+    elif args.RBP not in os.listdir(dataset_path):
+        raise Exception("No data available for %s. Options are: %s" %(args.RBP, str(os.listdir(dataset_path))))
+
+    ### make sure we have a trained model
+    model_path = os.path.join(dataset_path, args.RBP, 'finetuned_model')
+    if not os.path.exists(model_path):
+        raise Exception('Could not find model at "%s". Please make sure you have a trained model' % model_path)
 
 
+    ## find and load our sequence data
+    if args.sequence_path is None:
+        sequence_path = os.path.join(dataset_path, args.RBP, 'nontraining_sample_finetune', 'dev.tsv')
+    else:
+        sequence_path = args.sequence_path
 
+    if not os.path.exists(sequence_path):
+        raise Exception('Could not find sequence data at "%s". Path does not exist.' %sequence_path)
 
+    tokenizer=DNATokenizer.from_pretrained(model_path) ## need the tokenizer to load the sequences
+    if sequence_path[-3:] == '.fa' or sequence_path[-6:] == '.fasta':
+        dataset = load_fasta_sequences(sequence_path)
+    elif sequence_path[-4:] == '.tsv':
+        dataset = load_tsv_sequences(sequence_path)
+    else:
+        raise Exception("Not sure how to load sequence from '%s'. It doesn't seem to be a .fa, .fasta, or .tsv file" % sequence_path)
+
+    probs = predict(dataset, model_path)
+
+    if args.save:
+        save_file = sequence_file.split('.', 1)[0] + "_probabilities.pk"
+        save_probabilities(probs, save_file)
+
+    if args.plot:
+        import pyqtgraph as pg
+        p = plot(probs)
+
+    
