@@ -1,3 +1,4 @@
+import os, argparse
 import torch
 from Bio import SeqIO
 from src.transformers_DNABERT import BertConfig, BertForSequenceClassification, DNATokenizer
@@ -168,7 +169,7 @@ def predict(dataset, model_path):
 
     return results
 
-def plot_test_probabilities(dataset, label=None):
+def plot_test_probabilities(dataset, label=""):
     """Creates a plot of probability of binding, for several 101 nucleotide controls and a longer segment made of those controls concatenated together."""
     concatenated = dataset.get('concatenated', dataset.get('concatenated_neg'))
 
@@ -176,33 +177,52 @@ def plot_test_probabilities(dataset, label=None):
     keys = list(dataset.keys())[:-1] ## take off the concatenated key
 
     p = pg.plot()
-    p.plot(x=x, y=concatenated, pen=None, symbol='o', symbolBrush=(255,255,255,100))
+    p.setLabel('bottom', 'nucleotide number')
+    p.setLabel('left', 'binding probability')
+    p.setTitle("%s RNA binding probabilites"%label)
+    p.showGrid(True, True)
+    p.addLegend()
+    p.plot(x=x, y=concatenated, pen=None, symbol='o', symbolBrush=(255,255,255,100), name='concatenated samples')
 
+    x = [100*i+50 for i, k in enumerate(keys)]
+    data = [dataset[k] for k in keys]
+    p.plot(x, data, symbol='o', pen=None, name='individual samples')
     for i,k in enumerate(keys):
         x = 100*i + 50
         p.plot(x=[x], y=dataset[k], symbol='o')
 
-    p.setLabel('bottom', 'nucleotide')
-    p.setLabel('left', 'binding probability')
-    if label is not None:
-        p.setTitle(label)
+
 
     return p
 
-def plot_probablities(dataset, label=None):
+def plot_probablities(dataset, label=""):
     p = pg.plot()
     p.setLabel('bottom', 'nucleotide')
     p.setLabel('left', 'binding probability')
     p.addLegend()
-    if label is not None:
-        p.setTitle(label)
+    p.showGrid(True,True)
+    p.setTitle("%s example binding probabilities"%label)
     pens = ['r','y','g','b','m','c','w']
 
     keys = list(dataset.keys())
     for i, k in enumerate(keys):
         x = np.arange(0, dataset[k].shape[0]) * 10 + 50 ## *10 because we roll a new segment to test every 10 nucleotides, and + 50 to center on the middle of the RNA
-        p.plot(x=x, y=dataset[k], pen=None, symbol='o', symbolBrush=pens[i%len(pens)], name=k)
+        p.plot(x=x, y=dataset[k], pen=None, symbol='o', symbolBrush=pens[i%len(pens)], symbolPen=None, name=k)
 
+    return p
+
+def plot_nontraining_data(dataset, label=""):
+    ## plot histograms
+    p = pg.plot()
+    p.setTitle("%s probability distribution for known samples" % label)
+    p.setLabel('bottom', 'probability')
+    p.setLabel('left', 'count')
+    p.addLegend()
+    p.showGrid(True,True)
+    pos, x = np.histogram(dataset['positives'], bins=100, range=[0,1])
+    neg, x = np.histogram(dataset['negatives'], bins=100, range=[0,1])
+    p.plot(x, pos, stepMode=True, pen='b', name='binding')
+    p.plot(x, neg, stepMode=True, pen='r', name='non-binding')
     return p
 
 def plot(probs, label=None):
@@ -214,10 +234,17 @@ def plot(probs, label=None):
         return plot_probabilities(probs, label)
 
 def save_probabilities(probs, file_name):
-    raise NotImplemented()
+    print("Saving probabilities in %s"%file_name)
+    import pickle
+    with open(file_name, 'wb') as f:
+        pickle.dump(probs, f)
 
 def load_probabilities(file_name):
-    raise NotImplemented()
+    print("Loading probabilities from %s" %file_name)
+    import pickle
+    with open(file_name, 'rb') as f:
+        probs = pickle.load(f)
+    return probs
 
 #pos_data = load_sequences(pos_test_file)
 #neg_data = load_sequences(neg_test_file)
@@ -231,7 +258,7 @@ def load_probabilities(file_name):
 #p_neg = plot_test_probabilities(neg, label="negative test set")
 #oip_plot = plot_probablities(oip, label="OIP5-AS1_splice")
 
-dataset = load_tsv_sequences(nontrain_tsv_file)
+#dataset = load_tsv_sequences(nontrain_tsv_file)
 #training_dataset = load_tsv_sequences(train_tsv_file)
 #probs = predict(dataset, model_path)
 #training_probs = predict(training_dataset, model_path)
@@ -245,7 +272,7 @@ if __name__ == '__main__':
     #  - save - whether to save the results to be plotted later
     #  - plot - whether to try to plot now
 
-    parser.add_argument("--RBP", default=None, type=str, required=True, help="The name of the RNA binding protien (RBP) to use.")
+    parser.add_argument("RBP", type=str, help="The name of the RNA binding protien (RBP) to use.")
     parser.add_argument("--sequence_path", default=None, type=str, required=False, help="(optional) The path to the sequence file to use. If not specified, the non-training data for the RBP will be used")
     parser.add_argument("--save", action="store_true", help="(optional) if true, save binding probabilities as .pk (pickle) files")
     parser.add_argument("--plot", action="store_true", help="(optional) if true, create plots of probabilites")
@@ -256,9 +283,8 @@ if __name__ == '__main__':
 
     if args.plot_only:
         import pyqtgraph as pg
-        print("need to implement loading and plotting probabilities")
         probs = load_probabilities(args.probability_path)
-        plot(probs)
+        p = plot(probs, label=args.RBP)
         quit()
 
     #############################################################
@@ -266,9 +292,10 @@ if __name__ == '__main__':
     #############################################################
 
     ### Make sure we have a path to RBP
-    dataset_path = os.path.normpath(config.dataset_directory)
-    if dataset_path is None:
+
+    if config.dataset_directory is None:
         raise Exception('No dataset_directory specified in config.yml. Please fill in the path to the RBP datasets directory')
+    dataset_path = os.path.normpath(config.dataset_directory)
 
     if args.RBP is None:
         raise Exception('No RBP specified. Options are: %s' %str(os.listdir(dataset_path)))
@@ -290,22 +317,34 @@ if __name__ == '__main__':
     if not os.path.exists(sequence_path):
         raise Exception('Could not find sequence data at "%s". Path does not exist.' %sequence_path)
 
-    tokenizer=DNATokenizer.from_pretrained(model_path) ## need the tokenizer to load the sequences
-    if sequence_path[-3:] == '.fa' or sequence_path[-6:] == '.fasta':
-        dataset = load_fasta_sequences(sequence_path)
-    elif sequence_path[-4:] == '.tsv':
-        dataset = load_tsv_sequences(sequence_path)
-    else:
-        raise Exception("Not sure how to load sequence from '%s'. It doesn't seem to be a .fa, .fasta, or .tsv file" % sequence_path)
+    ## check if a saved probability file exists, ask if we want to use it
+    save_file = sequence_path.split('.', 1)[0] + "_%s_probabilities.pk"%args.RBP
+    if os.path.exists(save_file):
+        answer = input("Found previously saved probabilities file. Do you want to use them instead of recalculating (y or n)? ")
 
-    probs = predict(dataset, model_path)
+    if answer.lower() == "y":
+        probs = load_probabilities(save_file)
+    elif answer.lower() == 'n':
+        tokenizer=DNATokenizer.from_pretrained(model_path) ## need the tokenizer to load the sequences
+        if sequence_path[-3:] == '.fa' or sequence_path[-6:] == '.fasta':
+            print("Loading RNA sequence data from fasta file: %s"%sequence_path)
+            dataset = load_fasta_sequences(sequence_path)
+        elif sequence_path[-4:] == '.tsv':
+            print("Loading RNA sequence data from .tsv file: %s"%sequence_path)
+            dataset = load_tsv_sequences(sequence_path)
+        else:
+            raise Exception("Not sure how to load sequence from '%s'. It doesn't seem to be a .fa, .fasta, or .tsv file" % sequence_path)
+        print("Running probability predictions.....")
+        probs = predict(dataset, model_path)
+    else:
+        raise Exception("Don't know what to do with answer: %s" %answer)
 
     if args.save:
-        save_file = sequence_file.split('.', 1)[0] + "_probabilities.pk"
+        save_file = sequence_path.split('.', 1)[0] + "_%s_probabilities.pk" % args.RBP
         save_probabilities(probs, save_file)
 
     if args.plot:
         import pyqtgraph as pg
-        p = plot(probs)
+        p = plot(probs, label=args.RBP)
 
     
