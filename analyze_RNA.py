@@ -8,8 +8,12 @@ from motif.motif_utils import seq2kmer
 from torch.utils.data import TensorDataset, DataLoader
 from collections import OrderedDict
 import numpy as np
-#import pyqtgraph as pg
 import config
+try:
+    import pyqtgraph as pg
+    HAVE_PYQTGRAPH = True
+except ImportError:
+    HAVE_PYQTGRAPH = False
 
 #pg.dbg()
 
@@ -169,7 +173,7 @@ def predict(dataset, model_path):
 
     return results
 
-def plot_test_probabilities(dataset, label=""):
+def plot_test_probabilities(dataset, label="", rna='example_set'):
     """Creates a plot of probability of binding, for several 101 nucleotide controls and a longer segment made of those controls concatenated together."""
     concatenated = dataset.get('concatenated', dataset.get('concatenated_neg'))
 
@@ -179,7 +183,7 @@ def plot_test_probabilities(dataset, label=""):
     p = pg.plot()
     p.setLabel('bottom', 'nucleotide number')
     p.setLabel('left', 'binding probability')
-    p.setTitle("%s RNA binding probabilites"%label)
+    p.setTitle("%s %s binding probabilites"%(label, rna))
     p.showGrid(True, True)
     p.addLegend()
     p.plot(x=x, y=concatenated, pen=None, symbol='o', symbolBrush=(255,255,255,100), name='concatenated samples')
@@ -195,14 +199,14 @@ def plot_test_probabilities(dataset, label=""):
 
     return p
 
-def plot_probablities(dataset, label=""):
+def plot_probabilities(dataset, label="", rna=''):
     p = pg.plot()
     p.setLabel('bottom', 'nucleotide')
     p.setLabel('left', 'binding probability')
     p.addLegend()
     p.showGrid(True,True)
-    p.setTitle("%s example binding probabilities"%label)
-    pens = ['r','y','g','b','m','c','w']
+    p.setTitle("%s %s binding probabilities"%(label, rna))
+    pens = ['r','g','b','m','c','w','y']
 
     keys = list(dataset.keys())
     for i, k in enumerate(keys):
@@ -211,7 +215,7 @@ def plot_probablities(dataset, label=""):
 
     return p
 
-def plot_nontraining_data(dataset, label=""):
+def plot_nontraining_data(dataset, label="", rna=None):
     ## plot histograms
     p = pg.plot()
     p.setTitle("%s probability distribution for known samples" % label)
@@ -225,13 +229,13 @@ def plot_nontraining_data(dataset, label=""):
     p.plot(x, neg, stepMode=True, pen='r', name='non-binding')
     return p
 
-def plot(probs, label=None):
+def plot(probs, label=None, rna=''):
     if 'positives' in probs.keys():
-        return plot_nontraining_data(probs, label=label)
+        return plot_nontraining_data(probs, label=label, rna=rna)
     elif 'concatenated' in probs.keys():
-        return plot_test_probabilities(probs, label=label)
+        return plot_test_probabilities(probs, label=label, rna=rna)
     else:
-        return plot_probabilities(probs, label)
+        return plot_probabilities(probs, label, rna=rna)
 
 def save_probabilities(probs, file_name):
     print("Saving probabilities in %s"%file_name)
