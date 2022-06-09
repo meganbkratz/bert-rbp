@@ -276,12 +276,15 @@ if __name__ == '__main__':
     parser.add_argument("--sequence_path", default=None, type=str, required=False, help="(optional) The path to the sequence file to use. If not specified, the non-training data for the RBP will be used")
     parser.add_argument("--save", action="store_true", help="(optional) if true, save binding probabilities as .pk (pickle) files")
     parser.add_argument("--plot", action="store_true", help="(optional) if true, create plots of probabilites")
+    parser.add_argument("--run_new_prediction", action="store_true", help="(optional) If true, run a new set of predictions, else only run predictions if we don't find saved ones")
     parser.add_argument("--plot_only", action="store_true", help="(optional) if true, load a previously saved set of probabilities and create plots, requires --probability_path")
     parser.add_argument("--probability_path", default=None, type=str, help="(optional) path to a previously saved probabilities file (required if --plot_only is True")
 
     args = parser.parse_args()
 
     if args.plot_only:
+        if args.probability_path is None:
+            raise Exception("No --probability_path specified. Please specify the path to the probability file to use at runtime")
         import pyqtgraph as pg
         probs = load_probabilities(args.probability_path)
         p = plot(probs, label=args.RBP)
@@ -319,12 +322,9 @@ if __name__ == '__main__':
 
     ## check if a saved probability file exists, ask if we want to use it
     save_file = sequence_path.split('.', 1)[0] + "_%s_probabilities.pk"%args.RBP
-    if os.path.exists(save_file):
-        answer = input("Found previously saved probabilities file. Do you want to use them instead of recalculating (y or n)? ")
-
-    if answer.lower() == "y":
+    if os.path.exists(save_file) and not args.run_new_prediction:
         probs = load_probabilities(save_file)
-    elif answer.lower() == 'n':
+    else:
         tokenizer=DNATokenizer.from_pretrained(model_path) ## need the tokenizer to load the sequences
         if sequence_path[-3:] == '.fa' or sequence_path[-6:] == '.fasta':
             print("Loading RNA sequence data from fasta file: %s"%sequence_path)
@@ -336,8 +336,7 @@ if __name__ == '__main__':
             raise Exception("Not sure how to load sequence from '%s'. It doesn't seem to be a .fa, .fasta, or .tsv file" % sequence_path)
         print("Running probability predictions.....")
         probs = predict(dataset, model_path)
-    else:
-        raise Exception("Don't know what to do with answer: %s" %answer)
+
 
     if args.save:
         save_file = sequence_path.split('.', 1)[0] + "_%s_probabilities.pk" % args.RBP
