@@ -339,7 +339,7 @@ if __name__ == '__main__':
 
 
     if args.save:
-        save_file = sequence_path.split('.', 1)[0] + "_%s_probabilities.pk" % args.RBP
+        save_file = sequence_path.rsplit('.', 1)[0] + "_probabilities.pk"
         save_probabilities(probs, save_file)
 
     if args.plot:
