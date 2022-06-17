@@ -61,7 +61,7 @@ def load_fasta_sequences(f):
         examples=[]
         i = 0
         while i <= len(splice.seq)-MAX_LENGTH:
-            kmer_sequence = seq2kmer(str(splice.seq[i:i+MAX_LENGTH]), 3).replace('U', 'T')
+            kmer_sequence = seq2kmer(str(splice.seq[i:i+MAX_LENGTH].upper()), 3).replace('U', 'T')
             examples.append(InputExample(splice.id+'_%i'%i, text_a=kmer_sequence, label='0')) 
             i += 10
 
@@ -339,7 +339,7 @@ if __name__ == '__main__':
 
 
     if args.save:
-        save_file = sequence_path.rsplit('.', 1)[0] + "_probabilities.pk"
+        save_file = sequence_path.rsplit('.', 1)[0] + "_%s_probabilities.pk" % args.RBP
         save_probabilities(probs, save_file)
 
     if args.plot:
