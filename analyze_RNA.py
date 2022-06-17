@@ -320,6 +320,7 @@ if __name__ == '__main__':
     #  - plot - whether to try to plot now
 
     parser.add_argument("RBP", type=str, help="The name of the RNA binding protien (RBP) to use.")
+    parser.add_argument("--genome", action="store_true", help="if True, the supplied sequence file is a genomic file rather than just RNA")
     parser.add_argument("--sequence_path", default=None, type=str, required=False, help="(optional) The path to the sequence file to use. If not specified, the non-training data for the RBP will be used")
     parser.add_argument("--save", action="store_true", help="(optional) if true, save binding probabilities as .pk (pickle) files")
     parser.add_argument("--plot", action="store_true", help="(optional) if true, create plots of probabilites")
