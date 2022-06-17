@@ -115,7 +115,7 @@ def load_fasta_genome(filename):
         while i <= len(rna)-MAX_LENGTH:
             kmer_sequence = seq2kmer(str(rna[i:i+MAX_LENGTH]), 3).replace('U', 'T')
             examples.append(InputExample(splice.id+'_%i'%i, text_a=kmer_sequence, label='0'))
-            rna_indices.append(indices[i+MAX_LENGTH/2])
+            rna_indices.append(indices[int(i+MAX_LENGTH/2)][0])
             i += 10
 
         features = convert_examples_to_features(
@@ -131,7 +131,7 @@ def load_fasta_genome(filename):
         datasets[splice.id] = all_input_ids
         dataset_indices[splice.id] = rna_indices
 
-    return (dataset, dataset_indices)
+    return (datasets, dataset_indices)
 
 
 def load_tsv_sequences(filename):
@@ -250,6 +250,8 @@ def plot_probabilities(dataset, label="", rna=''):
 
     keys = list(dataset.keys())
     for i, k in enumerate(keys):
+        if k == 'genomic_indices':
+            continue
         if dataset.get('genomic_indices') is not None:
             x = dataset['genomic_indices'][k]
         else:
