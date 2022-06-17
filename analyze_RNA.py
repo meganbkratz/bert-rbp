@@ -186,10 +186,10 @@ def plot_test_probabilities(dataset, label="", rna='example_set'):
     p.setTitle("%s %s binding probabilites"%(label, rna))
     p.showGrid(True, True)
     p.addLegend()
-    p.plot(x=x, y=concatenated, pen=None, symbol='o', symbolBrush=(255,255,255,100), name='concatenated samples')
+    p.plot(x=x, y=concatenated, pen=None, symbol='o', symbolBrush=(255,255,255,100), name='concatenated sample')
 
     x = [100*i+50 for i, k in enumerate(keys)]
-    data = [dataset[k] for k in keys]
+    data = [dataset[k][0] for k in keys]
     p.plot(x, data, symbol='o', pen=None, name='individual samples')
     for i,k in enumerate(keys):
         x = 100*i + 50
