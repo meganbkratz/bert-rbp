@@ -109,7 +109,7 @@ def load_fasta_genome(filename):
         rna_indices = []
         dna = np.array([s for s in splice.seq])
         mask = np.char.isupper(dna)
-        rna = dna[mask]
+        rna = "".join(dna[mask])
         indices = np.argwhere(mask)
         i = 0
         while i <= len(rna)-MAX_LENGTH:
@@ -401,5 +401,3 @@ if __name__ == '__main__':
     if args.plot:
         import pyqtgraph as pg
         p = plot(probs, label=args.RBP)
-
-    
