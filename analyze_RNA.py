@@ -61,15 +61,15 @@ def load_fasta_sequences(f):
     global tokenizer, MAX_LENGTH
 
     datasets = OrderedDict()
-    #dataset_indices = OrderedDict()
+    dataset_indices = OrderedDict()
     for splice in splices:
         examples=[]
-    #    indices=[]
+        indices=[]
         i = 0
         while i <= len(splice.seq)-MAX_LENGTH:
             kmer_sequence = seq2kmer(str(splice.seq[i:i+MAX_LENGTH].upper()), 3).replace('U', 'T')
             examples.append(InputExample(splice.id+'_%i'%i, text_a=kmer_sequence, label='0')) 
-    #        indices.append(i+MAX_LENGTH/2)
+            indices.append(i+MAX_LENGTH/2)
             i += 10
 
         features = convert_examples_to_features(
@@ -93,8 +93,10 @@ def load_fasta_sequences(f):
         ## -- so a questions is if our the attention mask and token ids here are necessary
 
         datasets[splice.id] = all_input_ids
-    #    dataset_indices[splice.id] = indices
+        dataset_indices[splice.id] = {'rna_indices':indices}
         #datasets[splice.id] = TensorDataset(all_input_ids, all_attention_mask, all_token_type_ids, all_labels)
+
+    datasets['indices'] = dataset_indices
     return datasets
 
 def load_fasta_genome(filename):
@@ -106,6 +108,7 @@ def load_fasta_genome(filename):
     dataset_indices = OrderedDict()
     for splice in splices:
         examples = []
+        dna_indices = []
         rna_indices = []
         dna = np.array([s for s in splice.seq])
         mask = np.char.isupper(dna)
@@ -115,7 +118,8 @@ def load_fasta_genome(filename):
         while i <= len(rna)-MAX_LENGTH:
             kmer_sequence = seq2kmer(str(rna[i:i+MAX_LENGTH]), 3).replace('U', 'T')
             examples.append(InputExample(splice.id+'_%i'%i, text_a=kmer_sequence, label='0'))
-            rna_indices.append(indices[int(i+MAX_LENGTH/2)][0])
+            dna_indices.append(indices[int(i+MAX_LENGTH/2)][0])
+            rna_indices.append(int(i+MAX_LENGTH/2))
             i += 10
 
         features = convert_examples_to_features(
@@ -129,9 +133,10 @@ def load_fasta_genome(filename):
         all_input_ids = torch.tensor([f.input_ids for f in features], dtype=torch.long)
 
         datasets[splice.id] = all_input_ids
-        dataset_indices[splice.id] = rna_indices
+        dataset_indices[splice.id] = {'dna_indices': dna_indices, 'rna_indices':rna_indices}
 
-    return (datasets, dataset_indices)
+    datasets['indices'] = dataset_indices
+    return datasets
 
 
 def load_tsv_sequences(filename):
@@ -191,6 +196,8 @@ def predict(dataset, model_path):
     results = OrderedDict()
 
     for name, data in dataset.items():
+        if name in ['indices']:
+            continue
         dataloader = DataLoader(data, batch_size=32, shuffle=False)
         predictions=None
 
@@ -212,6 +219,7 @@ def predict(dataset, model_path):
 
         results[name] = probs[:,1]
 
+    results['indices'] = dataset.get('indices') ## just pass these through here
     return results
 
 def plot_test_probabilities(dataset, label="", rna='example_set'):
@@ -239,7 +247,11 @@ def plot_test_probabilities(dataset, label="", rna='example_set'):
 
     return p
 
-def plot_probabilities(dataset, label="", rna=''):
+def plot_probabilities(dataset, label="", rna='', index_mode=None):
+    if mode not in ['rna', 'dna']:
+        raise Exception("please use the index_mode argument to choose x-axis mode. options are 'rna' or 'dna'")
+    if mode == 'dna' and dataset.get('indices', {}).get('dna_indices') is None:
+        raise Exception('DNA indices are not present in dataset')
     p = pg.plot()
     p.setLabel('bottom', 'nucleotide')
     p.setLabel('left', 'binding probability')
@@ -249,13 +261,20 @@ def plot_probabilities(dataset, label="", rna=''):
     pens = ['r','g','b','m','c','w','y']
 
     keys = list(dataset.keys())
+    if mode == 'dna':
+        indices = dataset['indices']['dna_indices']
+    elif dataset.get('indices', {}).get('rna_indices') is not None:
+        indices = dataset['indices']['rna_indices']
+    else:
+        indices = None
+
     for i, k in enumerate(keys):
-        if k == 'genomic_indices':
+        if k in 'indices':
             continue
-        if dataset.get('genomic_indices') is not None:
-            x = dataset['genomic_indices'][k]
-        else:
+        if indices == None:
             x = np.arange(0, dataset[k].shape[0]) * 10 + 50 ## *10 because we roll a new segment to test every 10 nucleotides, and + 50 to center on the middle of the RNA
+        else:
+            x = indices[k]
         p.plot(x=x, y=dataset[k], pen=None, symbol='o', symbolBrush=pens[i%len(pens)], symbolPen=None, name=k)
 
     return p
@@ -389,10 +408,6 @@ if __name__ == '__main__':
             raise Exception("Not sure how to load sequence from '%s'. It doesn't seem to be a .fa, .fasta, or .tsv file" % sequence_path)
         print("Running probability predictions against %s model....."%args.RBP)
         probs = predict(dataset, model_path)
-        if args.genome:
-            ## add indices back into probs
-            probs['genomic_indices'] = indices
-
 
     if args.save:
         save_file = sequence_path.rsplit('.', 1)[0] + "_%s_probabilities.pk" % args.RBP
