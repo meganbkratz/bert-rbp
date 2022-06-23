@@ -61,7 +61,7 @@ def load_fasta_sequences(f):
     global tokenizer, MAX_LENGTH
 
     datasets = OrderedDict()
-    dataset_indices = OrderedDict()
+    dataset_indices = {'rna_indices':{}}
     for splice in splices:
         examples=[]
         indices=[]
@@ -93,7 +93,7 @@ def load_fasta_sequences(f):
         ## -- so a questions is if our the attention mask and token ids here are necessary
 
         datasets[splice.id] = all_input_ids
-        dataset_indices[splice.id] = {'rna_indices':indices}
+        dataset_indices['rna_indices'][splice.id] = indices
         #datasets[splice.id] = TensorDataset(all_input_ids, all_attention_mask, all_token_type_ids, all_labels)
 
     datasets['indices'] = dataset_indices
@@ -105,7 +105,7 @@ def load_fasta_genome(filename):
     global tokenizer, MAX_LENGTH
 
     datasets = OrderedDict()
-    dataset_indices = OrderedDict()
+    dataset_indices = {'dna_indices':{}, 'rna_indices':{}}
     for splice in splices:
         examples = []
         dna_indices = []
@@ -133,7 +133,8 @@ def load_fasta_genome(filename):
         all_input_ids = torch.tensor([f.input_ids for f in features], dtype=torch.long)
 
         datasets[splice.id] = all_input_ids
-        dataset_indices[splice.id] = {'dna_indices': dna_indices, 'rna_indices':rna_indices}
+        dataset_indices['dna_indices'][splice.id] = dna_indices
+        dataset_indices['rna_indices'][splice.id] = rna_indices
 
     datasets['indices'] = dataset_indices
     return datasets
@@ -397,7 +398,7 @@ if __name__ == '__main__':
         tokenizer=DNATokenizer.from_pretrained(model_path) ## need the tokenizer to load the sequences
         if args.genome:
             print("Loading genomic sequence data from %s" %sequence_path)
-            dataset, indices = load_fasta_genome(sequence_path)
+            dataset= load_fasta_genome(sequence_path)
         elif sequence_path[-3:] == '.fa' or sequence_path[-6:] == '.fasta':
             print("Loading RNA sequence data from fasta file: %s"%sequence_path)
             dataset = load_fasta_sequences(sequence_path)
