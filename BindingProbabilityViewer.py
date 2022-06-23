@@ -1,9 +1,59 @@
-import argparse
+import os, argparse
 import pyqtgraph as pg 
 from plotting_helpers import load_probabilities
 
+class FileLoader(pg.QtWidgets.QWidget):
+	def __init__(self, parent=None, baseDir=None):
+		pg.QtWidgets.QWidget.__init__(self, parent)
 
-class BindingProbabilityViewer(pg.QtGui.QWidget):
+		self.layout = pg.QtWidgets.QVBoxLayout()
+		self.setLayout(self.layout)
+
+		self.baseDirBtn = pg.QtWidgets.QPushButton("Set base directory...")
+		self.layout.addWidget(self.baseDirBtn)
+		self.fileTree = pg.QtWidgets.QTreeWidget()
+		self.fileTree.setAcceptDrops(False)
+		self.fileTree.setDragEnabled(False)
+		self.fileTree.setEditTriggers(pg.QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+		self.layout.addWidget(self.fileTree)
+
+		self.baseDirBtn.clicked.connect(self.baseDirBtnClicked)
+
+		self.baseDir = None
+		if baseDir is not None:
+			self.setBaseDir(baseDir)
+
+	def baseDirBtnClicked(self):
+		baseDir = self.baseDir if self.baseDir is not None else ""
+		newBaseDir = pg.FileDialog.getOpenFileName(self, caption="Select base directory...", directory=baseDir)
+		self.setBaseDir(newBaseDir)
+
+	def setBaseDir(self, baseDir):
+		self.baseDir = baseDir
+		self.fileTree.clear()
+
+		item = pg.QtWidgets.QTreeWidgetItem(self.fileTree, [os.path.basename(baseDir)])
+		item.setExpanded(True)
+		self.fileTree.addTopLevelItem(item)
+
+		for path in [os.path.join(baseDir, x) for x in os.listdir(baseDir)]:
+			self.addFileItem(path, item)
+
+	def addFileItem(self, path, root):
+		if os.path.isfile(path):
+			item = pg.QtWidgets.QTreeWidgetItem(root, [os.path.basename(path)])
+			item.path = os.path.abspath(path)
+			root.addChild(item)
+		elif os.path.isdir(path):
+			item = pg.QtWidgets.QTreeWidgetItem(root, [os.path.basename(path)])
+			root.addChild(item)
+			for f in os.listdir(path):
+				self.addFileItem(f, item)
+		else:
+			raise Exception("Why are we here?")
+
+
+class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 
 	def __init__(self, probability_file):
 		pg.QtWidgets.QWidget.__init__(self)
@@ -18,13 +68,20 @@ class BindingProbabilityViewer(pg.QtGui.QWidget):
 		self.rnaPlot = pg.PlotWidget(labels={'left':'binding probability', 'bottom':'RNA nucleotide number'}, title='RNA-aligned probabilities')
 		self.rnaPlot.addLegend()
 
-		self.layout.addWidget(self.label, 0,0)
-		self.layout.addWidget(self.genomePlot, 1,0)
-		self.layout.addWidget(self.rnaPlot, 2,0)
+		self.fileLoader = FileLoader(self, os.path.dirname(probability_file))
+		#self.layout.addWidget(self.label, ,0)
+		self.layout.addWidget(self.fileLoader, 0,0)
+		self.layout.addWidget(self.genomePlot, 0,1)
+		self.layout.addWidget(self.rnaPlot, 1,1)
 
-		self.newFileSelected(probability_file)
 
-	def newFileSelected(self, probability_file):
+		self.loadFile(probability_file)
+		self.fileLoader.fileTree.currentItemChanged.connect(self.newFileSelected)
+
+	def newFileSelected(self, new, old):
+		self.loadFile(new.path)
+
+	def loadFile(self, probability_file):
 		self.probs = load_probabilities(probability_file)
 		self.plot_probabilities()
 
