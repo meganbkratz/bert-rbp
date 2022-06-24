@@ -25,7 +25,7 @@ class FileLoader(pg.QtWidgets.QWidget):
 
 	def baseDirBtnClicked(self):
 		baseDir = self.baseDir if self.baseDir is not None else ""
-		newBaseDir = pg.FileDialog.getOpenFileName(self, caption="Select base directory...", directory=baseDir)
+		newBaseDir = pg.FileDialog.getExistingDirectory(self, caption="Select base directory...", directory=baseDir)
 		self.setBaseDir(newBaseDir)
 
 	def setBaseDir(self, baseDir):
@@ -43,12 +43,14 @@ class FileLoader(pg.QtWidgets.QWidget):
 		if os.path.isfile(path):
 			item = pg.QtWidgets.QTreeWidgetItem(root, [os.path.basename(path)])
 			item.path = os.path.abspath(path)
+			if path[-3:] != '.pk':
+				item.setDisabled(True)
 			root.addChild(item)
 		elif os.path.isdir(path):
 			item = pg.QtWidgets.QTreeWidgetItem(root, [os.path.basename(path)])
 			root.addChild(item)
 			for f in os.listdir(path):
-				self.addFileItem(f, item)
+				self.addFileItem(os.path.join(path,f), item)
 		else:
 			raise Exception("Why are we here?")
 
@@ -57,22 +59,30 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 
 	def __init__(self, probability_file):
 		pg.QtWidgets.QWidget.__init__(self)
+		self.resize(1500,1000)
 
 		self.layout = pg.QtWidgets.QGridLayout()
 		self.layout.setContentsMargins(3,3,3,3)
 		self.setLayout(self.layout)
 
-		self.label = pg.QtWidgets.QLabel('File: %s' %probability_file)
-		self.genomePlot = pg.PlotWidget(labels={'left':'binding probability', 'bottom':'DNA nucleotide number'}, title='Genome-Aligned probabilities')
-		self.genomePlot.addLegend()
-		self.rnaPlot = pg.PlotWidget(labels={'left':'binding probability', 'bottom':'RNA nucleotide number'}, title='RNA-aligned probabilities')
-		self.rnaPlot.addLegend()
-
 		self.fileLoader = FileLoader(self, os.path.dirname(probability_file))
-		#self.layout.addWidget(self.label, ,0)
-		self.layout.addWidget(self.fileLoader, 0,0)
-		self.layout.addWidget(self.genomePlot, 0,1)
-		self.layout.addWidget(self.rnaPlot, 1,1)
+
+		self.plot_layout = pg.GraphicsLayout()
+		self.genomePlot = self.plot_layout.addPlot(labels={'left':'binding probability', 'bottom':'DNA nucleotide number'}, title='Genome-Aligned probabilities')
+		self.plot_layout.nextRow()
+		self.rnaPlot = self.plot_layout.addPlot(labels={'left':'binding probability', 'bottom':'RNA nucleotide number'}, title='RNA-aligned probabilities')
+		for p in [self.genomePlot, self.rnaPlot]:
+			p.addLegend()
+			p.showGrid(True,True)
+
+		view = pg.GraphicsView()
+		view.setCentralItem(self.plot_layout)
+		view.setContentsMargins(0,0,0,0)
+
+		self.h_splitter = pg.QtWidgets.QSplitter(pg.QtCore.Qt.Horizontal)
+		self.layout.addWidget(self.h_splitter)
+		self.h_splitter.addWidget(self.fileLoader)
+		self.h_splitter.addWidget(view)
 
 
 		self.loadFile(probability_file)
@@ -82,6 +92,8 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		self.loadFile(new.path)
 
 	def loadFile(self, probability_file):
+		if os.path.isdir(probability_file):
+			return
 		self.probs = load_probabilities(probability_file)
 		self.plot_probabilities()
 
