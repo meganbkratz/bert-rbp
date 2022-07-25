@@ -105,10 +105,11 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 
 		pens = ['r','g','b','m','c','w','y']
 		for i,k in enumerate(probs.keys()):
-			if k in ['indices', 'genomic_indices']:
+			if k in ['indices', 'genomic_indices', 'metainfo']:
 				continue
 			if probs['indices'].get('dna_indices') is not None:
-				self.genomePlot.plot(x=probs['indices']['dna_indices'][k], y=probs[k], symbolBrush=pg.mkColor(pens[i]), name=k, pen=None, symbolPen=None)
+				start = probs['indices'].get('metainfo', {}).get(k, {}).get('range_start', 0)
+				self.genomePlot.plot(x=probs['indices']['dna_indices'][k]+start, y=probs[k], symbolBrush=pg.mkColor(pens[i]), name=k, pen=None, symbolPen=None)
 			self.rnaPlot.plot(x=probs['indices']['rna_indices'][k], y=probs[k], symbolBrush=pg.mkColor(pens[i]), name=k, pen=None, symbolPen=None)
 
 		

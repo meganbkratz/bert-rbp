@@ -6,13 +6,14 @@ def search_training_data(sequence_file, training_file):
     with open(sequence_file, 'r') as f:
         for line in f.readlines():
             if line[0] == '>':
-                p = re.compile(r'chr[0-9MXY]+:[0-9]+-[0-9]+')
-                m = p.search(line)
-                p2 = re.compile('\d+')
-                target_chromosome, target_start, target_end = p2.findall(m.group())
-                target_start = int(target_start)
-                target_end = int(target_end)
-                print('targets: ', target_chromosome, target_start, target_end)
+                # p = re.compile(r'chr[0-9MXY]+:[0-9]+-[0-9]+')
+                # m = p.search(line)
+                # p2 = re.compile('\d+')
+                # target_chromosome, target_start, target_end = p2.findall(m.group())
+                # target_start = int(target_start)
+                # target_end = int(target_end)
+                # print('targets: ', target_chromosome, target_start, target_end)
+                target_chromosome, target_start, target_end = parse_dna_range(line)
 
 
     with open(training_file, 'r') as f:
@@ -30,6 +31,16 @@ def search_training_data(sequence_file, training_file):
                 if target_start-length <= start <= target_end:
                     matches.append((line, lines[i+1]))
     return matches
+
+def parse_dna_range(s):
+    p = re.compile(r'chr[0-9MXY]+:[0-9]+-[0-9]+')
+    m = p.search(s)
+    p2 = re.compile('\dMXY+')
+    chromosome, start, end = p2.findall(m.group())
+    start = int(start)
+    end = int(end)
+    return (chromosome, start, end)
+
 
 sequence_file = '/home/megan/work/lnc_rna/data/sequences/TARDBP/Tardbp-human_genomic.fasta'
 pos_training_file = '/home/megan/work/lnc_rna/code/bert-rbp/RBP_training_data/TARDBP.positive.fa'
