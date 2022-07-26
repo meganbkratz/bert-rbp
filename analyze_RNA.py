@@ -7,6 +7,7 @@ from src.transformers_DNABERT import glue_convert_examples_to_features as conver
 from motif.motif_utils import seq2kmer
 from torch.utils.data import TensorDataset, DataLoader
 from collections import OrderedDict
+from util import parse_dna_range
 import numpy as np
 import config
 try:
@@ -105,7 +106,7 @@ def load_fasta_genome(filename):
     global tokenizer, MAX_LENGTH
 
     datasets = OrderedDict()
-    dataset_indices = {'dna_indices':{}, 'rna_indices':{}}
+    dataset_indices = {'dna_indices':{}, 'rna_indices':{}, 'metainfo':{}}
     for splice in splices:
         examples = []
         dna_indices = []
@@ -132,7 +133,10 @@ def load_fasta_genome(filename):
             )
         all_input_ids = torch.tensor([f.input_ids for f in features], dtype=torch.long)
 
+        chromosome, start, end = parse_dna_range(splice.range)
+
         datasets[splice.id] = all_input_ids
+        dataset_indices['metainfo'][splice.id] = {'range':splice.range, 'chromosome':chromosome, 'range_start':start, 'range_end':end}
         dataset_indices['dna_indices'][splice.id] = dna_indices
         dataset_indices['rna_indices'][splice.id] = rna_indices
 
