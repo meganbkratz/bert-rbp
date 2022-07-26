@@ -1,5 +1,6 @@
 import os, argparse
 import pyqtgraph as pg 
+import numpy as np
 from plotting_helpers import load_probabilities
 
 class FileLoader(pg.QtWidgets.QWidget):
@@ -55,6 +56,22 @@ class FileLoader(pg.QtWidgets.QWidget):
 			raise Exception("Why are we here?")
 
 
+class NonscientificAxisItem(pg.AxisItem):
+	###Need an axis that doesn't convert big numbers to SI notation so that we can display DNA addresses on plots
+
+    def tickStrings(self, values, scale, spacing):
+        if self.logMode:
+            return self.logTickStrings(values, scale, spacing)
+
+        places = max(0, np.ceil(-np.log10(spacing*scale)))
+        strings = []
+        for v in values:
+            vs = v * scale
+            vstr = ("%%0.%df" % places) % vs
+            strings.append(vstr)
+        return strings
+
+
 class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 
 	def __init__(self, probability_file):
@@ -68,9 +85,11 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		self.fileLoader = FileLoader(self, os.path.dirname(probability_file))
 
 		self.plot_layout = pg.GraphicsLayout()
-		self.genomePlot = self.plot_layout.addPlot(labels={'left':'binding probability', 'bottom':'DNA nucleotide number'}, title='Genome-Aligned probabilities')
+		self.genomePlot = self.plot_layout.addPlot(labels={'left':('binding probability')}, axisItems={'bottom':NonscientificAxisItem('bottom', text='DNA nucleotide number')}, title='Genome-Aligned probabilities')
 		self.plot_layout.nextRow()
 		self.rnaPlot = self.plot_layout.addPlot(labels={'left':'binding probability', 'bottom':'RNA nucleotide number'}, title='RNA-aligned probabilities')
+		self.genomePlot.getAxis('bottom').enableAutoSIPrefix(False)
+
 		for p in [self.genomePlot, self.rnaPlot]:
 			p.addLegend()
 			p.showGrid(True,True)
@@ -109,7 +128,7 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 				continue
 			if probs['indices'].get('dna_indices') is not None:
 				start = probs['indices'].get('metainfo', {}).get(k, {}).get('range_start', 0)
-				self.genomePlot.plot(x=probs['indices']['dna_indices'][k]+start, y=probs[k], symbolBrush=pg.mkColor(pens[i]), name=k, pen=None, symbolPen=None)
+				self.genomePlot.plot(x=np.array(probs['indices']['dna_indices'][k])+start, y=probs[k], symbolBrush=pg.mkColor(pens[i]), name=k, pen=None, symbolPen=None)
 			self.rnaPlot.plot(x=probs['indices']['rna_indices'][k], y=probs[k], symbolBrush=pg.mkColor(pens[i]), name=k, pen=None, symbolPen=None)
 
 		
