@@ -133,10 +133,10 @@ def load_fasta_genome(filename):
             )
         all_input_ids = torch.tensor([f.input_ids for f in features], dtype=torch.long)
 
-        chromosome, start, end = parse_dna_range(splice.range)
+        chromosome, start, end = parse_dna_range(splice.description)
 
         datasets[splice.id] = all_input_ids
-        dataset_indices['metainfo'][splice.id] = {'range':splice.range, 'chromosome':chromosome, 'range_start':start, 'range_end':end}
+        dataset_indices['metainfo'][splice.id] = {'desc':splice.description, 'chromosome':chromosome, 'range_start':start, 'range_end':end}
         dataset_indices['dna_indices'][splice.id] = dna_indices
         dataset_indices['rna_indices'][splice.id] = rna_indices
 

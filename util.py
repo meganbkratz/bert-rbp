@@ -35,15 +35,16 @@ def search_training_data(sequence_file, training_file):
 def parse_dna_range(s):
     p = re.compile(r'chr[0-9MXY]+:[0-9]+-[0-9]+')
     m = p.search(s)
-    p2 = re.compile('\dMXY+')
+    p2 = re.compile(r'[0-9MXY]+')
     chromosome, start, end = p2.findall(m.group())
     start = int(start)
     end = int(end)
     return (chromosome, start, end)
 
+if __name__ == "__main__":
 
-sequence_file = '/home/megan/work/lnc_rna/data/sequences/TARDBP/Tardbp-human_genomic.fasta'
-pos_training_file = '/home/megan/work/lnc_rna/code/bert-rbp/RBP_training_data/TARDBP.positive.fa'
-neg_training_file = '/home/megan/work/lnc_rna/code/bert-rbp/RBP_training_data/TARDBP.negative.fa'
-pos_matches = search_training_data(sequence_file, pos_training_file)
-neg_matches = search_training_data(sequence_file, neg_training_file)
+    sequence_file = '/home/megan/work/lnc_rna/data/sequences/TARDBP/Tardbp-human_genomic.fasta'
+    pos_training_file = '/home/megan/work/lnc_rna/code/bert-rbp/RBP_training_data/TARDBP.positive.fa'
+    neg_training_file = '/home/megan/work/lnc_rna/code/bert-rbp/RBP_training_data/TARDBP.negative.fa'
+    pos_matches = search_training_data(sequence_file, pos_training_file)
+    neg_matches = search_training_data(sequence_file, neg_training_file)
