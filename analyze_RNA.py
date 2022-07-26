@@ -376,9 +376,9 @@ if __name__ == '__main__':
         raise Exception("No data available for %s. Options are: %s" %(args.RBP, str(os.listdir(dataset_path))))
 
     ### make sure we have a trained model
-    model_path = os.path.join(dataset_path, args.RBP, 'finetuned_model')
+    model_path = os.path.join(dataset_path, args.RBP, 'model_to_use')
     if not os.path.exists(model_path):
-        raise Exception('Could not find model at "%s". Please make sure you have a trained model' % model_path)
+        raise Exception('Could not find model at "%s". Please make sure you have a trained model, and move it into a model_to_use directory' % model_path)
 
 
     ## find and load our sequence data
