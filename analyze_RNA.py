@@ -228,7 +228,7 @@ def predict(dataset, model_path):
     return results
 
 def plot_test_probabilities(dataset, label="", rna='example_set'):
-    """Creates a plot of probability of binding, for several 101 nucleotide controls and a longer segment made of those controls concatenated together."""
+    """Creates a plot of probability of binding (model output), for several 101 nucleotide controls and a longer segment made of those controls concatenated together."""
     concatenated = dataset.get('concatenated', dataset.get('concatenated_neg'))
 
     dataset.pop('genomic_indices')
@@ -237,8 +237,8 @@ def plot_test_probabilities(dataset, label="", rna='example_set'):
 
     p = pg.plot()
     p.setLabel('bottom', 'nucleotide number')
-    p.setLabel('left', 'binding probability')
-    p.setTitle("%s %s binding probabilites"%(label, rna))
+    p.setLabel('left', 'model output')
+    p.setTitle("%s %s model output"%(label, rna))
     p.showGrid(True, True)
     p.addLegend()
     p.plot(x=x, y=concatenated, pen=None, symbol='o', symbolBrush=(255,255,255,100), name='concatenated sample')
@@ -259,7 +259,7 @@ def plot_probabilities(dataset, label="", rna='', index_mode=None):
         raise Exception('DNA indices are not present in dataset')
     p = pg.plot()
     p.setLabel('bottom', 'nucleotide')
-    p.setLabel('left', 'binding probability')
+    p.setLabel('left', 'model output')
     p.addLegend()
     p.showGrid(True,True)
     p.setTitle("%s %s binding probabilities"%(label, rna))
@@ -287,8 +287,8 @@ def plot_probabilities(dataset, label="", rna='', index_mode=None):
 def plot_nontraining_data(dataset, label="", rna=None):
     ## plot histograms
     p = pg.plot()
-    p.setTitle("%s probability distribution for known samples" % label)
-    p.setLabel('bottom', 'probability')
+    p.setTitle("%s model output distribution for known samples" % label)
+    p.setLabel('bottom', 'output')
     p.setLabel('left', 'count')
     p.addLegend()
     p.showGrid(True,True)
@@ -307,13 +307,13 @@ def plot(probs, label=None, rna=''):
         return plot_probabilities(probs, label, rna=rna)
 
 def save_probabilities(probs, file_name):
-    print("Saving probabilities in %s"%file_name)
+    print("Saving model output in %s"%file_name)
     import pickle
     with open(file_name, 'wb') as f:
         pickle.dump(probs, f)
 
 def load_probabilities(file_name):
-    print("Loading probabilities from %s" %file_name)
+    print("Loading model output from %s" %file_name)
     import pickle
     with open(file_name, 'rb') as f:
         probs = pickle.load(f)
@@ -351,8 +351,8 @@ if __name__ == '__main__':
     parser.add_argument("--save", action="store_true", help="(optional) if true, save binding probabilities as .pk (pickle) files")
     parser.add_argument("--plot", action="store_true", help="(optional) if true, create plots of probabilites")
     parser.add_argument("--run_new_prediction", action="store_true", help="(optional) If true, run a new set of predictions, else only run predictions if we don't find saved ones")
-    parser.add_argument("--plot_only", action="store_true", help="(optional) if true, load a previously saved set of probabilities and create plots, requires --probability_path")
-    parser.add_argument("--probability_path", default=None, type=str, help="(optional) path to a previously saved probabilities file (required if --plot_only is True")
+    parser.add_argument("--plot_only", action="store_true", help="(optional) if true, load a previously saved set of outputs and create plots, requires --probability_path")
+    parser.add_argument("--probability_path", default=None, type=str, help="(optional) path to a previously saved model output file (required if --plot_only is True")
 
     args = parser.parse_args()
 
@@ -395,7 +395,7 @@ if __name__ == '__main__':
         raise Exception('Could not find sequence data at "%s". Path does not exist.' %sequence_path)
 
     ## check if a saved probability file exists, ask if we want to use it
-    save_file = sequence_path.split('.', 1)[0] + "_%s_probabilities.pk"%args.RBP
+    save_file = sequence_path.split('.', 1)[0] + "_%s_bertrbp_output.pk"%args.RBP
     if os.path.exists(save_file) and not args.run_new_prediction:
         probs = load_probabilities(save_file)
     else:
@@ -415,7 +415,7 @@ if __name__ == '__main__':
         probs = predict(dataset, model_path)
 
     if args.save:
-        save_file = sequence_path.rsplit('.', 1)[0] + "_%s_probabilities.pk" % args.RBP
+        save_file = sequence_path.rsplit('.', 1)[0] + "_%s_bertrbp_output.pk" % args.RBP
         save_probabilities(probs, save_file)
 
     if args.plot:
