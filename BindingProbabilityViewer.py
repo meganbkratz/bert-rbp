@@ -108,7 +108,8 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		self.fileLoader.fileTree.currentItemChanged.connect(self.newFileSelected)
 
 	def newFileSelected(self, new, old):
-		self.loadFile(new.path)
+		if hasattr(new, 'path'):
+			self.loadFile(new.path)
 
 	def loadFile(self, probability_file):
 		if os.path.isdir(probability_file):
