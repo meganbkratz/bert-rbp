@@ -2,6 +2,7 @@ import os, argparse
 import pyqtgraph as pg 
 import numpy as np
 from plotting_helpers import load_probabilities
+import scipy.signal
 
 class FileLoader(pg.QtWidgets.QWidget):
 	def __init__(self, parent=None, baseDir=None):
@@ -71,6 +72,21 @@ class NonscientificAxisItem(pg.AxisItem):
             strings.append(vstr)
         return strings
 
+def besselFilter(data, cutoff, order=1, dt=None, btype='low', bidir=True):
+    """return data passed through bessel filter"""
+
+    if dt is None:
+    	dt = 1.0
+
+    b,a = scipy.signal.bessel(order, cutoff * dt, btype=btype) 
+
+    if bidir:
+        d1 = scipy.signal.lfilter(b, a, scipy.signal.lfilter(b, a, data)[::-1])[::-1]
+    else:
+        d1 = scipy.signal.lfilter(b, a, data)
+
+    return d1
+
 
 class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 
@@ -124,13 +140,21 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		self.rnaPlot.clear()
 
 		pens = ['r','g','b','m','c','w','y']
+
+		applyFilter=True ## todo: make this a gui option
 		for i,k in enumerate(probs.keys()):
 			if k in ['indices', 'genomic_indices', 'metainfo']:
 				continue
+			if applyFilter:
+				filtered = besselFilter(probs[k], 0.1, dt=1)
 			if probs['indices'].get('dna_indices') is not None:
 				start = probs['indices'].get('metainfo', {}).get(k, {}).get('range_start', 0)
 				self.genomePlot.plot(x=np.array(probs['indices']['dna_indices'][k])+start, y=probs[k], symbolBrush=pg.mkColor(pens[i]), name=k, pen=None, symbolPen=None)
+				if applyFilter:
+					self.genomePlot.plot(x=np.array(probs['indices']['dna_indices'][k])+start, y=filtered, pen=pens[i])
 			self.rnaPlot.plot(x=probs['indices']['rna_indices'][k], y=probs[k], symbolBrush=pg.mkColor(pens[i]), name=k, pen=None, symbolPen=None)
+			if applyFilter:
+				self.rnaPlot.plot(x=probs['indices']['rna_indices'][k], y=filtered, pen=pens[i])
 
 		
 if __name__ == '__main__':
