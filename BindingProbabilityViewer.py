@@ -117,17 +117,38 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		self.ctrl = pg.QtWidgets.QWidget()
 		grid = pg.QtWidgets.QGridLayout()
 		self.ctrl.setLayout(grid)
+
 		self.spliceTree = pg.TreeWidget()
-		grid.addWidget(self.spliceTree)
+		self.thresholdCheck = pg.QtWidgets.QCheckBox("Threshold:")
+		self.thresholdSpin = pg.SpinBox(value=0.95, bounds=[0,1], minStep=0.01)
+		label1 = pg.QtWidgets.QLabel("FPR:")
+		label1.setAlignment(pg.QtCore.Qt.AlignRight)
+		label2 = pg.QtWidgets.QLabel("TPR:")
+		label2.setAlignment(pg.QtCore.Qt.AlignRight)
+		self.fprLabel = pg.QtWidgets.QLabel("fprLabel")
+		self.tprLabel = pg.QtWidgets.QLabel("tprLabel")
+		self.rocPlot = pg.PlotWidget(labels={'left':"True Positive Rate (TPR)", 'bottom':"False Positive Rate (FPR)"}, title="ROC")
+		self.rocPlot.setMaximumSize(300,300)
+
+		grid.addWidget(self.spliceTree, 0,0, 3,2)
+		grid.addWidget(self.thresholdCheck, 3, 0, 1,1)
+		grid.addWidget(self.thresholdSpin, 3,1,1,1)
+		grid.addWidget(label1, 4,0,1,1)
+		grid.addWidget(self.fprLabel, 4,1,1,1)
+		grid.addWidget(label2, 5,0,1,1)
+		grid.addWidget(self.tprLabel, 5,1,1,1)
+		grid.addWidget(self.rocPlot, 6,0,2,2)
+		grid.setRowStretch(0,10)
 
 		self.h_splitter = pg.QtWidgets.QSplitter(pg.QtCore.Qt.Horizontal)
 		self.layout.addWidget(self.h_splitter)
 		self.h_splitter.addWidget(self.fileLoader)
 		self.h_splitter.addWidget(view)
 		self.h_splitter.addWidget(self.ctrl)
-
+		self.h_splitter.setStretchFactor(1,10)
 
 		self.loadFile(probability_file)
+		
 		self.fileLoader.fileTree.currentItemChanged.connect(self.newFileSelected)
 		self.spliceTree.itemChanged.connect(self.spliceTreeItemChanged)
 
