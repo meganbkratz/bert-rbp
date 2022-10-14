@@ -114,14 +114,22 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		view.setCentralItem(self.plot_layout)
 		view.setContentsMargins(0,0,0,0)
 
+		self.ctrl = pg.QtWidgets.QWidget()
+		grid = pg.QtWidgets.QGridLayout()
+		self.ctrl.setLayout(grid)
+		self.spliceTree = pg.TreeWidget()
+		grid.addWidget(self.spliceTree)
+
 		self.h_splitter = pg.QtWidgets.QSplitter(pg.QtCore.Qt.Horizontal)
 		self.layout.addWidget(self.h_splitter)
 		self.h_splitter.addWidget(self.fileLoader)
 		self.h_splitter.addWidget(view)
+		self.h_splitter.addWidget(self.ctrl)
 
 
 		self.loadFile(probability_file)
 		self.fileLoader.fileTree.currentItemChanged.connect(self.newFileSelected)
+		self.spliceTree.itemChanged.connect(self.spliceTreeItemChanged)
 
 	def newFileSelected(self, new, old):
 		if hasattr(new, 'path'):
@@ -131,7 +139,22 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		if os.path.isdir(probability_file):
 			return
 		self.probs = load_probabilities(probability_file)
+
+		self.spliceTree.clear()
+		self.splices = {}
+		for k in self.probs.keys():
+			if k not in ['indices', 'genomic_indices', 'metainfo']:
+				treeItem = pg.QtWidgets.QTreeWidgetItem([k])
+				treeItem.setFlags(treeItem.flags() | pg.QtCore.Qt.ItemFlag.ItemIsUserCheckable)
+				treeItem.setCheckState(0, pg.QtCore.Qt.CheckState.Checked)
+				self.spliceTree.invisibleRootItem().addChild(treeItem)
+				self.splices[k]=treeItem
+
 		self.plot_probabilities()
+
+	def spliceTreeItemChanged(self, item, col):
+		if col == 0:
+			self.plot_probabilities()
 
 	def plot_probabilities(self):
 		probs = self.probs
@@ -142,8 +165,8 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		pens = ['r','g','b','m','c','w','y']
 
 		applyFilter=True ## todo: make this a gui option
-		for i,k in enumerate(probs.keys()):
-			if k in ['indices', 'genomic_indices', 'metainfo']:
+		for i,k in enumerate(self.splices.keys()):
+			if self.splices[k].checkState(0) == pg.QtCore.Qt.CheckState.Unchecked:
 				continue
 			if applyFilter:
 				filtered = besselFilter(probs[k], 0.1, dt=1)
@@ -162,9 +185,11 @@ if __name__ == '__main__':
 
 	parser = argparse.ArgumentParser()
 
-	parser.add_argument('probability_file', type=str, help="The path to the probability file to load.")
+	parser.add_argument('probability_file', type=str, help="The path to the probability file to load (or directory to start in).")
 
 	args = parser.parse_args()
+
+	pg.dbg()
 
 	mw = BindingProbabilityViewer(args.probability_file)
 	mw.show()
