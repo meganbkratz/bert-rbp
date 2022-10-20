@@ -5,6 +5,8 @@ from plotting_helpers import load_probabilities
 import scipy.signal
 import config
 
+print('Finished imports')
+
 class FileLoader(pg.QtWidgets.QWidget):
 	def __init__(self, parent=None, baseDir=None):
 		pg.QtWidgets.QWidget.__init__(self, parent)
@@ -296,6 +298,7 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 
 		
 if __name__ == '__main__':
+	print('entering main')
 	app = pg.mkQApp()
 
 	parser = argparse.ArgumentParser()
@@ -304,9 +307,16 @@ if __name__ == '__main__':
 
 	args = parser.parse_args()
 
+	print("parsed args")
+
 	pg.dbg()
 
+	print('setup pg.dbg()')
+
 	mw = BindingProbabilityViewer(args.probability_file)
+	print('created mw.')
 	mw.show()
+
+	print("ready.")
 
 
