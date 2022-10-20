@@ -1,8 +1,9 @@
-import os, argparse
+import os, argparse, re
 import pyqtgraph as pg 
 import numpy as np
 from plotting_helpers import load_probabilities
 import scipy.signal
+import config
 
 class FileLoader(pg.QtWidgets.QWidget):
 	def __init__(self, parent=None, baseDir=None):
@@ -125,10 +126,14 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		label1.setAlignment(pg.QtCore.Qt.AlignRight)
 		label2 = pg.QtWidgets.QLabel("TPR:")
 		label2.setAlignment(pg.QtCore.Qt.AlignRight)
-		self.fprLabel = pg.QtWidgets.QLabel("fprLabel")
-		self.tprLabel = pg.QtWidgets.QLabel("tprLabel")
+		self.fprLabel = pg.QtWidgets.QLabel("")
+		self.tprLabel = pg.QtWidgets.QLabel("")
 		self.rocPlot = pg.PlotWidget(labels={'left':"True Positive Rate (TPR)", 'bottom':"False Positive Rate (FPR)"}, title="ROC")
 		self.rocPlot.setMaximumSize(300,300)
+		self.histogramPlot = pg.PlotWidget(labels={'left':'count', 'bottom':'model output'}, title='Control data histogram')
+		self.histogramPlot.addLegend()
+		self.histogramPlot.setMaximumSize(300,200)
+		self.thresholdLine = pg.InfiniteLine(pos=self.thresholdSpin.value())
 
 		grid.addWidget(self.spliceTree, 0,0, 3,2)
 		grid.addWidget(self.thresholdCheck, 3, 0, 1,1)
@@ -138,6 +143,7 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		grid.addWidget(label2, 5,0,1,1)
 		grid.addWidget(self.tprLabel, 5,1,1,1)
 		grid.addWidget(self.rocPlot, 6,0,2,2)
+		grid.addWidget(self.histogramPlot,8,0,2,2)
 		grid.setRowStretch(0,10)
 
 		self.h_splitter = pg.QtWidgets.QSplitter(pg.QtCore.Qt.Horizontal)
@@ -151,6 +157,8 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		
 		self.fileLoader.fileTree.currentItemChanged.connect(self.newFileSelected)
 		self.spliceTree.itemChanged.connect(self.spliceTreeItemChanged)
+		self.thresholdSpin.sigValueChanged.connect(self.thresholdValueChanged)
+		self.thresholdCheck.stateChanged.connect(self.thresholdValueChanged)
 
 	def newFileSelected(self, new, old):
 		if hasattr(new, 'path'):
@@ -171,11 +179,83 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 				self.spliceTree.invisibleRootItem().addChild(treeItem)
 				self.splices[k]=treeItem
 
+		self.rbp = self.parseRBP(filename=probability_file)
+		self.rbp_stats = self.loadPerformanceData()
+		self.plot_rbp_stats()
+
 		self.plot_probabilities()
+
+	def parseRBP(self, filename=None):
+		rbp = self.probs.get('metainfo', {}).get('rbp_name')
+		if rbp is not None:
+			return rbp
+
+		if filename is not None:
+			pattern = re.compile('_[A-Z0-9]*_')
+			names = pattern.findall(filename)
+			if len(names) == 1:
+				return names[0].strip('_')
+			else:
+				print("Could not parse RBP name from filename: {}. Found {} matches: {}".format(filename, len(names), names))
+
+	def loadPerformanceData(self):
+		if self.rbp is None:
+			print("Could not load performance data, no RBP found.")
+			return
+
+		filename = None
+		if 'RBP_performance' in os.listdir(self.fileLoader.baseDir):
+			filename = os.path.join(self.fileLoader.baseDir, 'RBP_performance', self.rbp+'_performance.csv')
+		if filename is None or not os.path.exists(filename):
+			try:
+				filename = os.path.join(config.rbp_performance_dir, self.rbp+'_performance.csv')
+			except TypeError:
+				if config.rbp_performance_dir is None:
+					raise Exception("Please specify the rbp_performance_dir directory in your config.yaml file.")
+				raise
+
+		if not os.path.exists(filename):
+			print("Could not find perfomance data for {}. Looked here:{}".format(self.rbp, filename))
+			return
+		return np.genfromtxt(filename, delimiter=',', names=True, dtype=[float]+[int]*6)
+
+	def plot_rbp_stats(self):
+		self.rocPlot.clear()
+		self.histogramPlot.clear()
+		self.histogramPlot.addItem(self.thresholdLine)
+		if self.rbp_stats is None:
+			return
+
+		self.fpr = self.rbp_stats['false_positives']/(self.rbp_stats['false_positives']+self.rbp_stats['true_negatives'])
+		self.tpr = self.rbp_stats['true_positives']/(self.rbp_stats['true_positives']+self.rbp_stats['false_negatives'])
+
+		self.rocPlot.plot(x=self.fpr, y=self.tpr, pen=None, symbol='o', symbolPen=None, symbolBrush='r')
+
+		i = np.argwhere(self.rbp_stats['threshold'] == self.thresholdSpin.value())[0]
+		self.thresholdMarker = self.rocPlot.plot(x=self.fpr[i], y=self.tpr[i], pen=None, symbol='o', symbolPen=None, symbolBrush='w')
+
+
+		x = list(self.rbp_stats['threshold']) + [1.]
+		self.histogramPlot.plot(x=x, y=self.rbp_stats['pos_hist'], stepMode=True, pen='b', name='positives')
+		self.histogramPlot.plot(x=x, y=self.rbp_stats['neg_hist'], stepMode=True, pen='r', name='negatives')
 
 	def spliceTreeItemChanged(self, item, col):
 		if col == 0:
 			self.plot_probabilities()
+
+	def thresholdValueChanged(self):
+		if self.rbp_stats is None:
+			return
+		value = self.thresholdSpin.value()
+
+		i = np.argwhere(self.rbp_stats['threshold'] == value)[0]
+		self.thresholdMarker.setData(x=self.fpr[i], y=self.tpr[i])
+		self.fprLabel.setText("%.6f"%self.fpr[i])
+		self.tprLabel.setText("%.6f"%self.tpr[i])
+		self.thresholdLine.setPos(value)
+
+		self.plot_probabilities()
+
 
 	def plot_probabilities(self):
 		probs = self.probs
@@ -184,21 +264,35 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		self.rnaPlot.clear()
 
 		pens = ['r','g','b','m','c','w','y']
+		alpha = 255
+		hues = len(probs.keys())
 
 		applyFilter=True ## todo: make this a gui option
+		useThreshold = self.thresholdCheck.isChecked()
+		threshold = self.thresholdSpin.value()
 		for i,k in enumerate(self.splices.keys()):
 			if self.splices[k].checkState(0) == pg.QtCore.Qt.CheckState.Unchecked:
 				continue
 			if applyFilter:
 				filtered = besselFilter(probs[k], 0.1, dt=1)
+			if useThreshold:
+				thresholdMask = np.argwhere(probs[k]>=threshold)[:,0]
+				alpha = 100
 			if probs['indices'].get('dna_indices') is not None:
 				start = probs['indices'].get('metainfo', {}).get(k, {}).get('range_start', 0)
-				self.genomePlot.plot(x=np.array(probs['indices']['dna_indices'][k])+start, y=probs[k], symbolBrush=pg.mkColor(pens[i]), name=k, pen=None, symbolPen=None)
+				dna_indices = np.array(probs['indices']['dna_indices'][k]) + start
+				self.genomePlot.plot(x=dna_indices, y=probs[k], symbolBrush=pg.intColor(i, hues, alpha=alpha), name=k, pen=None, symbolPen=None)
 				if applyFilter:
-					self.genomePlot.plot(x=np.array(probs['indices']['dna_indices'][k])+start, y=filtered, pen=pens[i])
-			self.rnaPlot.plot(x=probs['indices']['rna_indices'][k], y=probs[k], symbolBrush=pg.mkColor(pens[i]), name=k, pen=None, symbolPen=None)
+					self.genomePlot.plot(x=dna_indices, y=filtered, pen=pg.intColor(i, hues))
+				if useThreshold:
+					self.genomePlot.plot(x=dna_indices[thresholdMask], y=probs[k][thresholdMask], pen=None, symbolBrush=pg.intColor(i, hues), symbolPen='w')
+			rna_indices = np.array(probs['indices']['rna_indices'][k])
+			self.rnaPlot.plot(x=rna_indices, y=probs[k], symbolBrush=pg.intColor(i, hues, alpha=alpha), name=k, pen=None, symbolPen=None)
 			if applyFilter:
-				self.rnaPlot.plot(x=probs['indices']['rna_indices'][k], y=filtered, pen=pens[i])
+				self.rnaPlot.plot(x=rna_indices, y=filtered, pen=pg.intColor(i, hues))
+			if useThreshold:
+				self.rnaPlot.plot(x=rna_indices[thresholdMask], y=probs[k][thresholdMask], symbolBrush=pg.intColor(i, hues), pen=None, symbolPen='w')
+
 
 		
 if __name__ == '__main__':
