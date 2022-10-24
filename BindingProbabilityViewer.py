@@ -1,4 +1,4 @@
-import os, argparse, re
+import os, argparse, re, sys
 import pyqtgraph as pg 
 import numpy as np
 from plotting_helpers import load_probabilities
@@ -309,14 +309,17 @@ if __name__ == '__main__':
 
 	print("parsed args")
 
-	pg.dbg()
+	#pg.dbg()
 
-	print('setup pg.dbg()')
+	#print('setup pg.dbg()')
 
 	mw = BindingProbabilityViewer(args.probability_file)
 	print('created mw.')
 	mw.show()
 
 	print("ready.")
+
+	if not sys.flags.interactive:
+		app.exec_()
 
 
