@@ -6,6 +6,10 @@ import scipy.signal
 import config
 
 print('Finished imports')
+os.environ['QT_MAC_WANTS_LAYER'] = '1'
+print('set environment variable')
+print("PyqtGraph info:")
+pg.systemInfo()
 
 class FileLoader(pg.QtWidgets.QWidget):
 	def __init__(self, parent=None, baseDir=None):
@@ -320,6 +324,6 @@ if __name__ == '__main__':
 	print("ready.")
 
 	if not sys.flags.interactive:
+		print('starting qt event loop')
 		app.exec_()
-
-
+		print('exited qt eventloop')
