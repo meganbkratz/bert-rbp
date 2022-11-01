@@ -52,7 +52,7 @@ class FileLoader(pg.QtWidgets.QWidget):
 		elif os.path.isdir(path):
 			item = pg.QtWidgets.QTreeWidgetItem(root, [os.path.basename(path)])
 			root.addChild(item)
-			for f in os.listdir(path):
+			for f in sorted(os.listdir(path)):
 				self.addFileItem(os.path.join(path,f), item)
 		else:
 			raise Exception("Why are we here?")
