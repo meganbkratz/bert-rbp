@@ -301,10 +301,12 @@ if __name__ == '__main__':
 	parser = argparse.ArgumentParser()
 
 	parser.add_argument('probability_file', type=str, help="The path to the probability file to load (or directory to start in).")
+	parser.add_argument('--debug', action='store_true', help="Run the pyqtgraph debug console")
 
 	args = parser.parse_args()
 
-	pg.dbg()
+	if args.debug:
+		pg.dbg()
 
 	mw = BindingProbabilityViewer(args.probability_file)
 	mw.show()
