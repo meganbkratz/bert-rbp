@@ -5,6 +5,10 @@ from plotting_helpers import load_probabilities
 import scipy.signal
 import config
 
+## set plots to have white backgrounds
+pg.setConfigOption('background', 'w')
+pg.setConfigOption('foreground', 'k')
+
 class FileLoader(pg.QtWidgets.QWidget):
 	def __init__(self, parent=None, baseDir=None):
 		pg.QtWidgets.QWidget.__init__(self, parent)
@@ -135,6 +139,7 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		self.histogramPlot.setMaximumSize(300,200)
 		self.thresholdLine = pg.InfiniteLine(pos=self.thresholdSpin.value())
 
+
 		grid.addWidget(self.spliceTree, 0,0, 3,2)
 		grid.addWidget(self.thresholdCheck, 3, 0, 1,1)
 		grid.addWidget(self.thresholdSpin, 3,1,1,1)
@@ -232,7 +237,7 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		self.rocPlot.plot(x=self.fpr, y=self.tpr, pen=None, symbol='o', symbolPen=None, symbolBrush='r')
 
 		i = np.argwhere(self.rbp_stats['threshold'] == self.thresholdSpin.value())[0]
-		self.thresholdMarker = self.rocPlot.plot(x=self.fpr[i], y=self.tpr[i], pen=None, symbol='o', symbolPen=None, symbolBrush='w')
+		self.thresholdMarker = self.rocPlot.plot(x=self.fpr[i], y=self.tpr[i], pen=None, symbol='o', symbolPen=None, symbolBrush='k')
 
 
 		x = list(self.rbp_stats['threshold']) + [1.]
@@ -263,7 +268,7 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		self.genomePlot.clear()
 		self.rnaPlot.clear()
 
-		pens = ['r','g','b','m','c','w','y']
+		pens = ['r','g','b','m','c','k','y']
 		alpha = 255
 		hues = len(probs.keys())
 
@@ -285,13 +290,13 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 				if applyFilter:
 					self.genomePlot.plot(x=dna_indices, y=filtered, pen=pg.intColor(i, hues))
 				if useThreshold:
-					self.genomePlot.plot(x=dna_indices[thresholdMask], y=probs[k][thresholdMask], pen=None, symbolBrush=pg.intColor(i, hues), symbolPen='w')
+					self.genomePlot.plot(x=dna_indices[thresholdMask], y=probs[k][thresholdMask], pen=None, symbolBrush=pg.intColor(i, hues), symbolPen='k')
 			rna_indices = np.array(probs['indices']['rna_indices'][k])
 			self.rnaPlot.plot(x=rna_indices, y=probs[k], symbolBrush=pg.intColor(i, hues, alpha=alpha), name=k, pen=None, symbolPen=None)
 			if applyFilter:
 				self.rnaPlot.plot(x=rna_indices, y=filtered, pen=pg.intColor(i, hues))
 			if useThreshold:
-				self.rnaPlot.plot(x=rna_indices[thresholdMask], y=probs[k][thresholdMask], symbolBrush=pg.intColor(i, hues), pen=None, symbolPen='w')
+				self.rnaPlot.plot(x=rna_indices[thresholdMask], y=probs[k][thresholdMask], symbolBrush=pg.intColor(i, hues), pen=None, symbolPen='k')
 
 
 		
