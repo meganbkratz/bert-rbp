@@ -121,7 +121,7 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 
 		self.spliceTree = pg.TreeWidget()
 		self.thresholdCheck = pg.QtWidgets.QCheckBox("Threshold:")
-		self.thresholdSpin = pg.SpinBox(value=0.95, bounds=[0,1], minStep=0.01)
+		self.thresholdSpin = pg.SpinBox(value=0.95, bounds=[0,0.99], minStep=0.01)
 		label1 = pg.QtWidgets.QLabel("FPR:")
 		label1.setAlignment(pg.QtCore.Qt.AlignRight)
 		label2 = pg.QtWidgets.QLabel("TPR:")
