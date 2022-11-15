@@ -132,10 +132,13 @@ def load_fasta_genome(filename, tokenizer):
             pad_token=tokenizer.convert_tokens_to_ids([tokenizer.pad_token])[0]
             )
         all_input_ids = torch.tensor([f.input_ids for f in features], dtype=torch.long)
+        all_attention_mask = torch.tensor([f.attention_mask for f in features], dtype=torch.long)
+        all_token_type_ids = torch.tensor([f.token_type_ids for f in features], dtype=torch.long)
+        all_labels = torch.tensor([f.label for f in features], dtype=torch.long)
 
         chromosome, start, end = parse_dna_range(splice.description)
 
-        datasets[splice.id] = all_input_ids
+        datasets[splice.id] = TensorDataset(all_input_ids, all_attention_mask, all_token_type_ids, all_labels)
         dataset_indices['metainfo'][splice.id] = {'desc':splice.description, 'chromosome':chromosome, 'range_start':start, 'range_end':end}
         dataset_indices['dna_indices'][splice.id] = dna_indices
         dataset_indices['rna_indices'][splice.id] = rna_indices
@@ -192,37 +195,43 @@ def predict(dataset, model_path):
     Returns a dictionary of {name:[prob1, prob2, ...]}
     """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = BertForSequenceClassification.from_pretrained(model_path)
+    model = BertForSequenceClassification.from_pretrained(model_path, output_attentions=True)
+    #model.config.output_attentions = True
+    #model.config.output_hidden_states = True
     model = model.to(device)
     model.eval()
 
     softmax = torch.nn.Softmax(dim=1)
+    batch_size = 32
 
     results = OrderedDict()
+    results['attention'] = {}
 
     for name, data in dataset.items():
         if name in ['indices']:
             continue
-        dataloader = DataLoader(data, batch_size=32, shuffle=False)
-        predictions=None
+        dataloader = DataLoader(data, batch_size=batch_size, shuffle=False)
+        predictions=np.zeros([len(data), 2])
+        attention_scores = np.zeros([len(data), 12, 101])
 
-        for batch in dataloader:
-            batch = batch.to(device)
+
+        for i, batch in enumerate(dataloader):
+            batch = tuple(t.to(device) for t in batch)
 
             with torch.no_grad():
-                outputs = model(input_ids=batch)
+                outputs = model(input_ids=batch[0], attention_mask=batch[1], token_type_ids=batch[2], labels=None)
                 #_, logits = outputs[:2] ## see modeling_bert.py line 390 for description of outputs -- right now we only get (and need) logits
                 logits = outputs[0]
+                attention = outputs[-1][-1][:,:,0,:]
 
             preds = logits.detach().cpu().numpy()
-            if predictions is None:
-                predictions = preds
-            else:
-                predictions = np.append(predictions, preds, axis=0)
+            predictions[i*batch_size:i*batch_size+len(batch[0])] = preds
+            attention_scores[i*batch_size:i*batch_size+len(batch[0]),:,:] = attention
 
         probs = softmax(torch.tensor(predictions, dtype=torch.float32)).numpy()
 
         results[name] = probs[:,1]
+        results['attention'][name] = attention_scores
 
     results['indices'] = dataset.get('indices') ## just pass these through here
     return results
@@ -415,7 +424,7 @@ if __name__ == '__main__':
         probs = predict(dataset, model_path)
 
     if args.save:
-        save_file = sequence_path.rsplit('.', 1)[0] + "_%s_bertrbp_output.pk" % args.RBP
+        save_file = sequence_path.rsplit('.', 1)[0] + "_%s_bertrbp_output_w_attention.pk" % args.RBP
         save_probabilities(probs, save_file)
 
     if args.plot:
