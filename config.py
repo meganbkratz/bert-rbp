@@ -16,6 +16,7 @@ if os.path.isfile(configfile):
 elif not os.path.exists(configfile):
 	config = {}
 	config['dataset_directory'] = None
+	config['rbp_performance_dir'] = None
 	with open(configfile, 'w') as f:
 		yaml.dump(config, f, default_flow_style=False)
 
