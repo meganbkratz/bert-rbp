@@ -130,8 +130,11 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		label1.setAlignment(pg.QtCore.Qt.AlignRight)
 		label2 = pg.QtWidgets.QLabel("TPR:")
 		label2.setAlignment(pg.QtCore.Qt.AlignRight)
+		label3 = pg.QtWidgets.QLabel("False Discovery Rate:")
+		label3.setAlignment(pg.QtCore.Qt.AlignRight)
 		self.fprLabel = pg.QtWidgets.QLabel("")
 		self.tprLabel = pg.QtWidgets.QLabel("")
+		self.fdrLabel = pg.QtWidgets.QLabel("")
 		self.rocPlot = pg.PlotWidget(labels={'left':"True Positive Rate (TPR)", 'bottom':"False Positive Rate (FPR)"}, title="ROC")
 		self.rocPlot.setMaximumSize(300,300)
 		self.histogramPlot = pg.PlotWidget(labels={'left':'count', 'bottom':'model output'}, title='Control data histogram')
@@ -147,8 +150,10 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		grid.addWidget(self.fprLabel, 4,1,1,1)
 		grid.addWidget(label2, 5,0,1,1)
 		grid.addWidget(self.tprLabel, 5,1,1,1)
-		grid.addWidget(self.rocPlot, 6,0,2,2)
-		grid.addWidget(self.histogramPlot,8,0,2,2)
+		grid.addWidget(label3, 6,0,1,1)
+		grid.addWidget(self.fdrLabel, 6,1,1,1)
+		grid.addWidget(self.rocPlot, 7,0,2,2)
+		grid.addWidget(self.histogramPlot,9,0,2,2)
 		grid.setRowStretch(0,10)
 
 		self.h_splitter = pg.QtWidgets.QSplitter(pg.QtCore.Qt.Horizontal)
@@ -233,6 +238,7 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 
 		self.fpr = self.rbp_stats['false_positives']/(self.rbp_stats['false_positives']+self.rbp_stats['true_negatives'])
 		self.tpr = self.rbp_stats['true_positives']/(self.rbp_stats['true_positives']+self.rbp_stats['false_negatives'])
+		self.fdr = self.rbp_stats['false_positives']/(self.rbp_stats['false_positives']+self.rbp_stats['true_positives'])
 
 		self.rocPlot.plot(x=self.fpr, y=self.tpr, pen=None, symbol='o', symbolPen=None, symbolBrush='r')
 
@@ -243,6 +249,7 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		x = list(self.rbp_stats['threshold']) + [1.]
 		self.histogramPlot.plot(x=x, y=self.rbp_stats['pos_hist'], stepMode=True, pen='b', name='positives')
 		self.histogramPlot.plot(x=x, y=self.rbp_stats['neg_hist'], stepMode=True, pen='r', name='negatives')
+		self.thresholdValueChanged()
 
 	def spliceTreeItemChanged(self, item, col):
 		if col == 0:
@@ -257,6 +264,7 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		self.thresholdMarker.setData(x=self.fpr[i], y=self.tpr[i])
 		self.fprLabel.setText("%.6f"%self.fpr[i])
 		self.tprLabel.setText("%.6f"%self.tpr[i])
+		self.fdrLabel.setText("%.6f"%self.fdr[i])
 		self.thresholdLine.setPos(value)
 
 		self.plot_probabilities()
