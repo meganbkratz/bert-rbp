@@ -215,10 +215,10 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 
 		filename = None
 		if 'RBP_performance' in os.listdir(self.fileLoader.baseDir):
-			filename = os.path.join(self.fileLoader.baseDir, 'RBP_performance', self.rbp+'_performance.csv')
+			filename = os.path.join(self.fileLoader.baseDir, 'RBP_performance', self.rbp+'_eval_performance.csv')
 		if filename is None or not os.path.exists(filename):
 			try:
-				filename = os.path.join(config.rbp_performance_dir, self.rbp+'_performance.csv')
+				filename = os.path.join(config.rbp_performance_dir, self.rbp+'_eval_performance.csv')
 			except TypeError:
 				if config.rbp_performance_dir is None:
 					raise Exception("Please specify the rbp_performance_dir directory in your config.yaml file.")
