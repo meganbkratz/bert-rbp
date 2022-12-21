@@ -1,5 +1,7 @@
-import os
+import os, time, datetime, argparse
 import torch
+import numpy as np
+import json
 from torch.utils.data import TensorDataset, DataLoader, RandomSampler, SequentialSampler
 from src.transformers_DNABERT import BertConfig, BertForSequenceClassification, DNATokenizer, AdamW
 from src.transformers_DNABERT.data.processors.utils import InputExample, DataProcessor, InputFeatures
@@ -57,32 +59,42 @@ def load_dataset(data_file, tokenizer):
 	print('    success!')
 	return dataset
 
-def train(model_path, tokenizer, training_dataset, eval_dataset=None):
+def train(model_path, tokenizer, training_dataset, eval_dataset, **kwargs):
 	#args.train_batch_size = args.per_gpu_train_batch_size * max(1, args.n_gpu)
 	print("Training model......")
 	params = {
-		'batch_size_per_gpu': 32,
+		#'batch_size_per_gpu': 32,
 		'n_epochs': 3,
 		'weight_decay': 0.01, #from train_and_test.sh
 		'warmup_percent': 0.1, #from train_and_test.sh
 		'learning_rate': 2e-4,
+		'batch_size':128,
+		'dropout':0.1,
 		#'gradient_accumulation_steps': 1, 
 		#'adam_epsilon': 1e-8,
 	}
+	params.update(kwargs)
+	print('Training hyperparameters:', params)
 
 	config = BertConfig.from_pretrained(
 		model_path,
 		num_labels=2,
 	)
+
+	#print("orig config:", config)
+	config.hidden_dropout_prob = params['dropout']
+	config.attention_probs_dropout_prob = params['dropout']
+	config.rnn_dropout = params['dropout']
+	print("adjusted config:", config)
 	model = BertForSequenceClassification.from_pretrained(model_path, config=config)
 
 	device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-	n_gpu = torch.cuda.device_count()
+	#n_gpu = torch.cuda.device_count()
 	model.to(device)
 
-	batch_size = params['batch_size_per_gpu'] * n_gpu
-	train_dataloader = DataLoader(training_dataset, sampler=RandomSampler(training_dataset), batch_size=batch_size) ## might not need the sampler here, and just use shuffle=True?
-	eval_dataloader = DataLoader(eval_dataset, sampler=SequentialSampler(eval_dataset), batch_size=batch_size)
+	#batch_size = params['batch_size_per_gpu'] * n_gpu
+	train_dataloader = DataLoader(training_dataset, sampler=RandomSampler(training_dataset), batch_size=params['batch_size']) ## might not need the sampler here, and just use shuffle=True?
+	#eval_dataloader = DataLoader(eval_dataset, sampler=SequentialSampler(eval_dataset), batch_size=params['batch_size'])
 
 	# Prepare optimizer and schedule (linear warmup and decay)
 	## AdamW (more or less) takes all the parameters in the model and adjusts them down the gradient, then apply weight decay to the weights that don't move so that they eventually go to 0
@@ -96,27 +108,37 @@ def train(model_path, tokenizer, training_dataset, eval_dataset=None):
 	warmup_steps = int(params['warmup_percent'] * total_steps)
 	scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=warmup_steps, num_training_steps=total_steps)
 
-	if n_gpu > 1:
-		model = torch.nn.DataParallel(model)
+	#if n_gpu > 1:
+	#	model = torch.nn.DataParallel(model)
 
 	training_metrics = []
 	validation_metrics = []
-	total_training_loss = 0
 
+	## measure metrics before any training
+	training_metrics.append({"name": 'epoch{}_step{}'.format(0, -1), 'metrics':evaluate(model, training_dataset), 'epoch':0, 'step':-1})
+	validation_metrics.append({"name": 'epoch{}_step{}'.format(0, -1), 'metrics':evaluate(model, eval_dataset), 'epoch':0, 'step':-1})
+
+
+	t0 = time.time()
+	t_last = t0
 	### do the training
 	for epoch in range(params['n_epochs']):
-		total_training_loss = 0
 
 		for step, batch in enumerate(train_dataloader):
+			#print('step:%i'%step)
 			model.train()
 			model.zero_grad()  
 
 			batch = tuple(t.to(device) for t in batch)
-			inputs = {"input_ids": batch[0], "attention_mask": batch[1], "token_type_ids": batch[2], "labels": batch[3]}
-			outputs = model(**inputs)
-			loss = outputs[0].mean()  # model outputs are always tuple in transformers (see doc)
+			inputs = {"input_ids": batch[0], "attention_mask": batch[1], "token_type_ids": batch[2], "labels": batch[3].unsqueeze(1)}
+			#print('train - run through model')
+			#for k,v in inputs.items():
+			#	print("    ",k,':', v.shape)
+			outputs = model(**inputs) # <- this is the line the warning is coming from
+			loss = outputs[0] # model outputs are always tuple in transformers (see doc)
+			#print('   loss:', loss)
 
-			total_training_loss += loss.item()
+			loss = loss.mean()
 
 			loss.backward()
 			torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
@@ -124,22 +146,26 @@ def train(model_path, tokenizer, training_dataset, eval_dataset=None):
 			optimizer.step()
 			scheduler.step()
 
-		avg_train_loss = total_training_loss / len(train_dataloader)
+			if (step+1) % 10 == 0:
+				training_metrics.append({"name": 'epoch{}_step{}'.format(epoch, step), 'metrics':evaluate(model, training_dataset), 'epoch':epoch, 'step':step})
+				validation_metrics.append({"name": 'epoch{}_step{}'.format(epoch, step), 'metrics':evaluate(model, eval_dataset), 'epoch':epoch, 'step':step})
 
-		training_metrics.append({"name": 'epoch_{}'.format(epoch), 'metrics':evaluate(model, training_dataset)})
-		validation_metrics.append({"name": 'epoch_{}'.format(epoch), 'metrics':evaluate(model, eval_dataset)})
-
-		print("Epoch_%i: train_loss_1=%f, train_loss_2:%f, validation_loss:%f"%(epoch, avg_train_loss, training_metrics[-1]['metrics']['loss'], validation_metrics[-1]['metrics']['loss']))
-		print("				train_auroc:%f, validation_auroc:%f" % (training_metrics[-1]['metrics']['auroc'], validation_metrics[-1]['metrics']['auroc']))
-	return model, (training_metrics, validation_metrics)  
+				print("Epoch%i_step%i: train_loss_1=%f, validation_loss:%f, train_auroc:%f, validation_auroc:%f"%(epoch, step+1, training_metrics[-1]['metrics']['loss'], validation_metrics[-1]['metrics']['loss'],training_metrics[-1]['metrics']['auroc'], validation_metrics[-1]['metrics']['auroc']))
+				#print("				train_auroc:%f, validation_auroc:%f" % (training_metrics[-1]['metrics']['auroc'], validation_metrics[-1]['metrics']['auroc']))
+				total_time = time.time() - t0
+				elapsed_time = time.time() - t_last
+				t_last = time.time()
+				print('		total_time:', str(datetime.timedelta(seconds=int(total_time))), 'time_since_last_check:', str(datetime.timedelta(seconds=int(elapsed_time))))
+	return model, {'training':training_metrics, 'validation':validation_metrics, 'hyperparameters':params}  
 
 def evaluate(model, dataset):
 
 	device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+	#n_gpu = torch.cuda.device_count()
 
 	model.eval()
 
-	dataloader = DataLoader(dataset, sampler=SequentialSampler(dataset), batch_size=32)
+	dataloader = DataLoader(dataset, sampler=SequentialSampler(dataset), batch_size=128)
 	total_loss = 0
 	#import IPython
 
@@ -147,25 +173,30 @@ def evaluate(model, dataset):
 	for step, batch in enumerate(dataloader):
 		batch = tuple(t.to(device) for t in batch)
 
-		inputs = {"input_ids": batch[0], "attention_mask": batch[1], "token_type_ids": batch[2], "labels": batch[3]}
+		inputs = {"input_ids": batch[0], "attention_mask": batch[1], "token_type_ids": batch[2], "labels": batch[3].unsqueeze(1)}
 		with torch.no_grad():
+			#print('evaluate - run through model')
 			outputs = model(**inputs)
-		loss = outputs[0].mean()
+		loss = outputs[0]
+		logits = outputs[1]
 		#IPython.embed()
-		total_loss += loss.item()
+		total_loss += loss.item() * len(batch[3])
 
 		if preds is None:
 			preds = logits.detach().cpu().numpy()
-            labels = inputs["labels"].detach().cpu().numpy()
-        else:
-            preds = np.append(preds, logits.detach().cpu().numpy(), axis=0)
-            labels = np.append(labels, inputs["labels"].detach().cpu().numpy(), axis=0)
+			labels = inputs["labels"].detach().cpu().numpy()
+		else:
+			preds = np.append(preds, logits.detach().cpu().numpy(), axis=0)
+			labels = np.append(labels, inputs["labels"].detach().cpu().numpy(), axis=0)
 
-	avg_loss = total_loss / len(dataloader)
-    probs = torch.nn.Softmax(dim=1)(torch.tensor(preds, dtype=torch.float32))[:,1].numpy()
+	avg_loss = total_loss / len(dataset)
+	probs = torch.nn.Softmax(dim=1)(torch.tensor(preds, dtype=torch.float32))[:,1].numpy()
 	auc = roc_auc_score(labels, probs)
+	#import IPython
+	#IPython.embed()
+	accuracy = (np.argmax(preds, axis=1) == labels.flatten()).mean()
 
-	return {'loss': avg_loss, 'auroc':auc}
+	return {'loss': avg_loss, 'auroc':auc, 'accuracy':accuracy}
 
 
 
@@ -173,17 +204,37 @@ def evaluate(model, dataset):
 
 if __name__ == '__main__':
 
+	parser = argparse.ArgumentParser()
+	parser.add_argument("RBP", type=str, help="The name of the RNA binding protien (RBP) to train.")
+	parser.add_argument("--save_path", type=str, help="The path where the model will be saved.")
+	parser.add_argument("--learning_rate", default=2e-4, help="The initial learning rate for the AdamW optimizer.")
+	parser.add_argument("--dropout_rate", default=0.1)
+	args = parser.parse_args()
+
 	model_path = '/proj/magnuslb/users/mkratz/bert-rbp/dnabert/3-new-12w-0/'
-	data_dir = '/proj/magnuslb/users/mkratz/bert-rbp/datasets/AARS/training_sample_finetune/'
+	data_dir = '/proj/magnuslb/users/mkratz/bert-rbp/datasets/%s/training_sample_finetune/' % args.RBP
+	#save_path = '/proj/magnuslb/users/mkratz/bert-rbp/datasets/%s/new_trained_model_2e-5LR_0.2dropout' % args.RBP
+	save_path = args.save_path
+	print('save_path', save_path)
 
 	tokenizer = DNATokenizer.from_pretrained(model_path)
 
 	training_data = load_dataset(os.path.join(data_dir, 'train.tsv'), tokenizer)
 	eval_data = load_dataset(os.path.join(data_dir, 'dev.tsv'), tokenizer)
 
-	model, metrics = train(model_path, tokenizer, training_data, eval_data)
+	model, metrics = train(model_path, tokenizer, training_data, eval_data, learning_rate=float(args.learning_rate), dropout=float(args.dropout_rate), n_epochs=5)
 
+	## save model and metrics
+	if not os.path.exists(save_path):
+		os.makedirs(save_path)
 
-
+	# Save a trained model, configuration and tokenizer using `save_pretrained()`.
+	# They can then be reloaded using `from_pretrained()`
+	#model_to_save = (model.module if hasattr(model, "module") else model)  # Take care of distributed/parallel training
+	model.save_pretrained(save_path)
+	tokenizer.save_pretrained(save_path)
+	torch.save(metrics, os.path.join(save_path, 'training_metrics.bin'))
+	with open(os.path.join(save_path, 'hyperparameters.json'), 'w') as f:
+		json.dump(metrics['hyperparameters'], f)
 
 
