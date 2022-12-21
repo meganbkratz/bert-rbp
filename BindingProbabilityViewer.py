@@ -108,8 +108,11 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		self.plot_layout = pg.GraphicsLayout()
 		self.genomePlot = self.plot_layout.addPlot(labels={'left':('binding probability')}, axisItems={'bottom':NonscientificAxisItem('bottom', text='DNA nucleotide number')}, title='Genome-Aligned probabilities')
 		self.plot_layout.nextRow()
-		self.rnaPlot = self.plot_layout.addPlot(labels={'left':'binding probability', 'bottom':'RNA nucleotide number'}, title='RNA-aligned probabilities')
+		self.rnaPlot = self.plot_layout.addPlot(labels={'left':'binding probability - model output', 'bottom':'RNA nucleotide number'}, title='RNA-aligned probabilities')
 		self.genomePlot.getAxis('bottom').enableAutoSIPrefix(False)
+		self.plot_layout.nextRow()
+		self.attentionPlot = self.plot_layout.addPlot(labels={'left': 'attention', 'bottom': 'RNA nucleotide number'}, title="Attention")
+		self.attentionPlot.setXLink(self.rnaPlot)
 
 		for p in [self.genomePlot, self.rnaPlot]:
 			p.addLegend()
@@ -177,7 +180,7 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		self.spliceTree.clear()
 		self.splices = {}
 		for k in self.probs.keys():
-			if k not in ['indices', 'genomic_indices', 'metainfo']:
+			if k not in ['indices', 'genomic_indices', 'metainfo', 'attention']:
 				treeItem = pg.QtWidgets.QTreeWidgetItem([k])
 				treeItem.setFlags(treeItem.flags() | pg.QtCore.Qt.ItemFlag.ItemIsUserCheckable)
 				treeItem.setCheckState(0, pg.QtCore.Qt.CheckState.Checked)
@@ -267,6 +270,8 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 
 		self.genomePlot.clear()
 		self.rnaPlot.clear()
+		self.attentionPlot.clear()
+		#self.attention_plots = []
 
 		pens = ['r','g','b','m','c','k','y']
 		alpha = 255
@@ -297,6 +302,44 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 				self.rnaPlot.plot(x=rna_indices, y=filtered, pen=pg.intColor(i, hues))
 			if useThreshold:
 				self.rnaPlot.plot(x=rna_indices[thresholdMask], y=probs[k][thresholdMask], symbolBrush=pg.intColor(i, hues), pen=None, symbolPen='k')
+
+			if probs.get('attention') is None:
+				continue
+			#self.attention_plots.append(plot_attention(probs, k))
+			att = np.sum(probs['attention'][k], axis=1)
+			avg = np.zeros([3, rna_indices[-1]+int(att.shape[-1]/2)]) #array where we sum attention and counts
+			avg[2] = np.arange(rna_indices[-1]+int(att.shape[-1]/2))
+			for j in range(att.shape[0]):
+				x = np.arange(att.shape[-1]) + (rna_indices[j]-int(att.shape[-1]/2))
+				self.attentionPlot.plot(x=x[2:-2], y = att[j][2:-2])
+				avg[0, x[2]:x[-2]] += att[j][2:-2]
+				avg[1, x[2]:x[-2]] += 1
+			mask = avg[1] != 0
+			avg2 = avg[0,mask]/avg[1,mask]
+			self.attentionPlot.plot(x=avg[2][mask], y=avg2, pen=pg.mkPen('g', width=2))
+
+
+
+def plot_attention(probs, k):
+	p = pg.plot(title='attention')
+
+	#k = list(probs['attention'].keys())[0]
+
+	att = probs['attention'][k]
+	att_sum = np.sum(probs['attention'][k], axis=1)
+	inds = probs['indices']['rna_indices'][k]
+
+	print("att.shape:", att.shape)
+
+	for i in range(att.shape[0]):
+		print(i)
+		a,b = 2, -2
+		x = np.arange(att.shape[-1]) + (inds[i]-att.shape[-1]/2)
+		for j in range(12):
+			p.plot(x=x[a:b], y=att[i, j, a:b], pen=pg.intColor(j, hues=12))
+
+	return p
+
 
 
 		
