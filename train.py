@@ -1,4 +1,4 @@
-import os, time, datetime, argparse
+import sys, os, time, datetime, argparse
 import torch
 import numpy as np
 import json
@@ -84,7 +84,7 @@ def train(model_path, tokenizer, training_dataset, eval_dataset, **kwargs):
 	#print("orig config:", config)
 	config.hidden_dropout_prob = params['dropout']
 	config.attention_probs_dropout_prob = params['dropout']
-	config.rnn_dropout = params['dropout']
+	#config.rnn_dropout = params['dropout']
 	print("adjusted config:", config)
 	model = BertForSequenceClassification.from_pretrained(model_path, config=config)
 
@@ -209,24 +209,40 @@ if __name__ == '__main__':
 	parser.add_argument("--save_path", type=str, help="The path where the model will be saved.")
 	parser.add_argument("--learning_rate", default=2e-4, help="The initial learning rate for the AdamW optimizer.")
 	parser.add_argument("--dropout_rate", default=0.1)
+	parser.add_argument("--kmer", type=int, default=3)
 	args = parser.parse_args()
 
-	model_path = '/proj/magnuslb/users/mkratz/bert-rbp/dnabert/3-new-12w-0/'
-	data_dir = '/proj/magnuslb/users/mkratz/bert-rbp/datasets/%s/training_sample_finetune/' % args.RBP
+	if args.kmer == 3:
+		model_path = '/proj/magnuslb/users/mkratz/bert-rbp/dnabert/3-new-12w-0/'
+		data_dir = '/proj/magnuslb/users/mkratz/bert-rbp/datasets/%s/training_sample_finetune/' % args.RBP
+	elif args.kmer == 6:
+		model_path = '/proj/magnuslb/users/mkratz/bert-rbp/dnabert/6-new-12w-0/'
+		data_dir = '/proj/magnuslb/users/mkratz/bert-rbp/datasets_6/%s/training_sample_finetune/' % args.RBP
+	else:
+		raise Exception('Only 3 and 6 kmer models are currently supported (but its easy to add others).')
+
 	#save_path = '/proj/magnuslb/users/mkratz/bert-rbp/datasets/%s/new_trained_model_2e-5LR_0.2dropout' % args.RBP
 	save_path = args.save_path
 	print('save_path', save_path)
+	print('base_model', model_path)
+	print('data_dir', data_dir)
+
+	## save model and metrics
+	if not os.path.exists(save_path):
+		os.makedirs(save_path)
+	else:
+		pass
+		#print('%s already exists. quitting...')
+		#sys.exit()
 
 	tokenizer = DNATokenizer.from_pretrained(model_path)
 
 	training_data = load_dataset(os.path.join(data_dir, 'train.tsv'), tokenizer)
 	eval_data = load_dataset(os.path.join(data_dir, 'dev.tsv'), tokenizer)
 
-	model, metrics = train(model_path, tokenizer, training_data, eval_data, learning_rate=float(args.learning_rate), dropout=float(args.dropout_rate), n_epochs=5)
+	model, metrics = train(model_path, tokenizer, training_data, eval_data, learning_rate=float(args.learning_rate), dropout=float(args.dropout_rate))
 
-	## save model and metrics
-	if not os.path.exists(save_path):
-		os.makedirs(save_path)
+
 
 	# Save a trained model, configuration and tokenizer using `save_pretrained()`.
 	# They can then be reloaded using `from_pretrained()`
@@ -236,5 +252,6 @@ if __name__ == '__main__':
 	torch.save(metrics, os.path.join(save_path, 'training_metrics.bin'))
 	with open(os.path.join(save_path, 'hyperparameters.json'), 'w') as f:
 		json.dump(metrics['hyperparameters'], f)
+
 
 
