@@ -54,7 +54,7 @@ MAX_LENGTH = 101
 
 
 
-def load_fasta_sequences(f, tokenizer):
+def load_fasta_sequences(f, tokenizer, n_kmer):
     """Given a FASTA file with one or more splices, return a Tensor Dataset for each splice"""
 
     splices = [x for x in SeqIO.parse(f, 'fasta')]
@@ -68,7 +68,7 @@ def load_fasta_sequences(f, tokenizer):
         indices=[]
         i = 0
         while i <= len(splice.seq)-MAX_LENGTH:
-            kmer_sequence = seq2kmer(str(splice.seq[i:i+MAX_LENGTH].upper()), 3).replace('U', 'T')
+            kmer_sequence = seq2kmer(str(splice.seq[i:i+MAX_LENGTH].upper()), n_kmer).replace('U', 'T')
             examples.append(InputExample(splice.id+'_%i'%i, text_a=kmer_sequence, label='0')) 
             indices.append(i+MAX_LENGTH/2)
             i += 10
@@ -100,7 +100,7 @@ def load_fasta_sequences(f, tokenizer):
     datasets['indices'] = dataset_indices
     return datasets
 
-def load_fasta_genome(filename, tokenizer):
+def load_fasta_genome(filename, tokenizer, n_kmer):
     splices = [x for x in SeqIO.parse(filename, 'fasta')]
 
     global MAX_LENGTH
@@ -117,7 +117,7 @@ def load_fasta_genome(filename, tokenizer):
         indices = np.argwhere(mask)
         i = 0
         while i <= len(rna)-MAX_LENGTH:
-            kmer_sequence = seq2kmer(str(rna[i:i+MAX_LENGTH]), 3).replace('U', 'T')
+            kmer_sequence = seq2kmer(str(rna[i:i+MAX_LENGTH]), n_kmer).replace('U', 'T')
             examples.append(InputExample(splice.id+'_%i'%i, text_a=kmer_sequence, label='0'))
             dna_indices.append(indices[int(i+MAX_LENGTH/2)][0])
             rna_indices.append(int(i+MAX_LENGTH/2))
@@ -227,84 +227,84 @@ def predict(dataset, model_path):
     results['indices'] = dataset.get('indices') ## just pass these through here
     return results
 
-def plot_test_probabilities(dataset, label="", rna='example_set'):
-    """Creates a plot of probability of binding (model output), for several 101 nucleotide controls and a longer segment made of those controls concatenated together."""
-    concatenated = dataset.get('concatenated', dataset.get('concatenated_neg'))
+# def plot_test_probabilities(dataset, label="", rna='example_set'):
+#     """Creates a plot of probability of binding (model output), for several 101 nucleotide controls and a longer segment made of those controls concatenated together."""
+#     concatenated = dataset.get('concatenated', dataset.get('concatenated_neg'))
 
-    dataset.pop('genomic_indices')
-    x = np.arange(0, concatenated.shape[0]) * 10 + 50 ## *10 because we roll a new segment to test every 10 nucleotides, and + 50 to center on the middle of the RNA
-    keys = list(dataset.keys())[:-1] ## take off the concatenated key
+#     dataset.pop('genomic_indices')
+#     x = np.arange(0, concatenated.shape[0]) * 10 + 50 ## *10 because we roll a new segment to test every 10 nucleotides, and + 50 to center on the middle of the RNA
+#     keys = list(dataset.keys())[:-1] ## take off the concatenated key
 
-    p = pg.plot()
-    p.setLabel('bottom', 'nucleotide number')
-    p.setLabel('left', 'model output')
-    p.setTitle("%s %s model output"%(label, rna))
-    p.showGrid(True, True)
-    p.addLegend()
-    p.plot(x=x, y=concatenated, pen=None, symbol='o', symbolBrush=(255,255,255,100), name='concatenated sample')
+#     p = pg.plot()
+#     p.setLabel('bottom', 'nucleotide number')
+#     p.setLabel('left', 'model output')
+#     p.setTitle("%s %s model output"%(label, rna))
+#     p.showGrid(True, True)
+#     p.addLegend()
+#     p.plot(x=x, y=concatenated, pen=None, symbol='o', symbolBrush=(255,255,255,100), name='concatenated sample')
 
-    x = [100*i+50 for i, k in enumerate(keys)]
-    data = [dataset[k][0] for k in keys]
-    p.plot(x, data, symbol='o', pen=None, name='individual samples')
-    for i,k in enumerate(keys):
-        x = 100*i + 50
-        p.plot(x=[x], y=dataset[k], symbol='o')
+#     x = [100*i+50 for i, k in enumerate(keys)]
+#     data = [dataset[k][0] for k in keys]
+#     p.plot(x, data, symbol='o', pen=None, name='individual samples')
+#     for i,k in enumerate(keys):
+#         x = 100*i + 50
+#         p.plot(x=[x], y=dataset[k], symbol='o')
 
-    return p
+#     return p
 
-def plot_probabilities(dataset, label="", rna='', index_mode=None):
-    if mode not in ['rna', 'dna']:
-        raise Exception("please use the index_mode argument to choose x-axis mode. options are 'rna' or 'dna'")
-    if mode == 'dna' and dataset.get('indices', {}).get('dna_indices') is None:
-        raise Exception('DNA indices are not present in dataset')
-    p = pg.plot()
-    p.setLabel('bottom', 'nucleotide')
-    p.setLabel('left', 'model output')
-    p.addLegend()
-    p.showGrid(True,True)
-    p.setTitle("%s %s binding probabilities"%(label, rna))
-    pens = ['r','g','b','m','c','w','y']
+# def plot_probabilities(dataset, label="", rna='', index_mode=None):
+#     if mode not in ['rna', 'dna']:
+#         raise Exception("please use the index_mode argument to choose x-axis mode. options are 'rna' or 'dna'")
+#     if mode == 'dna' and dataset.get('indices', {}).get('dna_indices') is None:
+#         raise Exception('DNA indices are not present in dataset')
+#     p = pg.plot()
+#     p.setLabel('bottom', 'nucleotide')
+#     p.setLabel('left', 'model output')
+#     p.addLegend()
+#     p.showGrid(True,True)
+#     p.setTitle("%s %s binding probabilities"%(label, rna))
+#     pens = ['r','g','b','m','c','w','y']
 
-    keys = list(dataset.keys())
-    if mode == 'dna':
-        indices = dataset['indices']['dna_indices']
-    elif dataset.get('indices', {}).get('rna_indices') is not None:
-        indices = dataset['indices']['rna_indices']
-    else:
-        indices = None
+#     keys = list(dataset.keys())
+#     if mode == 'dna':
+#         indices = dataset['indices']['dna_indices']
+#     elif dataset.get('indices', {}).get('rna_indices') is not None:
+#         indices = dataset['indices']['rna_indices']
+#     else:
+#         indices = None
 
-    for i, k in enumerate(keys):
-        if k in 'indices':
-            continue
-        if indices == None:
-            x = np.arange(0, dataset[k].shape[0]) * 10 + 50 ## *10 because we roll a new segment to test every 10 nucleotides, and + 50 to center on the middle of the RNA
-        else:
-            x = indices[k]
-        p.plot(x=x, y=dataset[k], pen=None, symbol='o', symbolBrush=pens[i%len(pens)], symbolPen=None, name=k)
+#     for i, k in enumerate(keys):
+#         if k in 'indices':
+#             continue
+#         if indices == None:
+#             x = np.arange(0, dataset[k].shape[0]) * 10 + 50 ## *10 because we roll a new segment to test every 10 nucleotides, and + 50 to center on the middle of the RNA
+#         else:
+#             x = indices[k]
+#         p.plot(x=x, y=dataset[k], pen=None, symbol='o', symbolBrush=pens[i%len(pens)], symbolPen=None, name=k)
 
-    return p
+#     return p
 
-def plot_nontraining_data(dataset, label="", rna=None):
-    ## plot histograms
-    p = pg.plot()
-    p.setTitle("%s model output distribution for known samples" % label)
-    p.setLabel('bottom', 'output')
-    p.setLabel('left', 'count')
-    p.addLegend()
-    p.showGrid(True,True)
-    pos, x = np.histogram(dataset['positives'], bins=100, range=[0,1])
-    neg, x = np.histogram(dataset['negatives'], bins=100, range=[0,1])
-    p.plot(x, pos, stepMode=True, pen='b', name='binding')
-    p.plot(x, neg, stepMode=True, pen='r', name='non-binding')
-    return p
+# def plot_nontraining_data(dataset, label="", rna=None):
+#     ## plot histograms
+#     p = pg.plot()
+#     p.setTitle("%s model output distribution for known samples" % label)
+#     p.setLabel('bottom', 'output')
+#     p.setLabel('left', 'count')
+#     p.addLegend()
+#     p.showGrid(True,True)
+#     pos, x = np.histogram(dataset['positives'], bins=100, range=[0,1])
+#     neg, x = np.histogram(dataset['negatives'], bins=100, range=[0,1])
+#     p.plot(x, pos, stepMode=True, pen='b', name='binding')
+#     p.plot(x, neg, stepMode=True, pen='r', name='non-binding')
+#     return p
 
-def plot(probs, label=None, rna=''):
-    if 'positives' in probs.keys():
-        return plot_nontraining_data(probs, label=label, rna=rna)
-    elif 'concatenated' in probs.keys():
-        return plot_test_probabilities(probs, label=label, rna=rna)
-    else:
-        return plot_probabilities(probs, label, rna=rna)
+# def plot(probs, label=None, rna=''):
+#     if 'positives' in probs.keys():
+#         return plot_nontraining_data(probs, label=label, rna=rna)
+#     elif 'concatenated' in probs.keys():
+#         return plot_test_probabilities(probs, label=label, rna=rna)
+#     else:
+#         return plot_probabilities(probs, label, rna=rna)
 
 def save_probabilities(probs, file_name):
     print("Saving model output in %s"%file_name)
@@ -346,23 +346,26 @@ if __name__ == '__main__':
     #  - plot - whether to try to plot now
 
     parser.add_argument("RBP", type=str, help="The name of the RNA binding protien (RBP) to use.")
-    parser.add_argument("--genome", action="store_true", help="if True, the supplied sequence file is a genomic file rather than just RNA")
+    #parser.add_argument("--genome", action="store_true", help="if True, the supplied sequence file is a genomic file rather than just RNA")
     parser.add_argument("--sequence_path", default=None, type=str, required=False, help="(optional) The path to the sequence file to use. If not specified, the non-training data for the RBP will be used")
-    parser.add_argument("--save", action="store_true", help="(optional) if true, save binding probabilities as .pk (pickle) files")
-    parser.add_argument("--plot", action="store_true", help="(optional) if true, create plots of probabilites")
-    parser.add_argument("--run_new_prediction", action="store_true", help="(optional) If true, run a new set of predictions, else only run predictions if we don't find saved ones")
-    parser.add_argument("--plot_only", action="store_true", help="(optional) if true, load a previously saved set of outputs and create plots, requires --probability_path")
-    parser.add_argument("--probability_path", default=None, type=str, help="(optional) path to a previously saved model output file (required if --plot_only is True")
+    #parser.add_argument("--save", action="store_true", help="(optional) if true, save binding probabilities as .pk (pickle) files")
+    #parser.add_argument("--plot", action="store_true", help="(optional) if true, create plots of probabilites")
+    #parser.add_argument("--run_new_prediction", action="store_true", help="(optional) If true, run a new set of predictions, else only run predictions if we don't find saved ones")
+    #parser.add_argument("--plot_only", action="store_true", help="(optional) if true, load a previously saved set of outputs and create plots, requires --probability_path")
+    #parser.add_argument("--probability_path", default=None, type=str, help="(optional) path to a previously saved model output file (required if --plot_only is True")
+    parser.add_argument("--model_path", default=None, type=str, required=True, help="The path to the model to use")
+    parser.add_argument("--save_path", default=None, type=str, required=True, help="Where to save the output data.")
+    parser.add_argument("--kmer", type=int, default=3)
 
     args = parser.parse_args()
 
-    if args.plot_only:
-        if args.probability_path is None:
-            raise Exception("No --probability_path specified. Please specify the path to the probability file to use at runtime")
-        import pyqtgraph as pg
-        probs = load_probabilities(args.probability_path)
-        p = plot(probs, label=args.RBP)
-        quit()
+    # if args.plot_only:
+    #     if args.probability_path is None:
+    #         raise Exception("No --probability_path specified. Please specify the path to the probability file to use at runtime")
+    #     import pyqtgraph as pg
+    #     probs = load_probabilities(args.probability_path)
+    #     p = plot(probs, label=args.RBP)
+    #     quit()
 
     #############################################################
     # Everything below only happens if --plot_only is not True  #
@@ -370,19 +373,20 @@ if __name__ == '__main__':
 
     ### Make sure we have a path to RBP
 
-    if config.dataset_directory is None:
-        raise Exception('No dataset_directory specified in config.yml. Please fill in the path to the RBP datasets directory')
-    dataset_path = os.path.normpath(config.dataset_directory)
+    # if config.dataset_directory is None:
+    #     raise Exception('No dataset_directory specified in config.yml. Please fill in the path to the RBP datasets directory')
+    # dataset_path = os.path.normpath(config.dataset_directory)
 
-    if args.RBP is None:
-        raise Exception('No RBP specified. Options are: %s' %str(os.listdir(dataset_path)))
-    elif args.RBP not in os.listdir(dataset_path):
-        raise Exception("No data available for %s. Options are: %s" %(args.RBP, str(os.listdir(dataset_path))))
+    # if args.RBP is None:
+    #     raise Exception('No RBP specified. Options are: %s' %str(os.listdir(dataset_path)))
+    # elif args.RBP not in os.listdir(dataset_path):
+    #     raise Exception("No data available for %s. Options are: %s" %(args.RBP, str(os.listdir(dataset_path))))
 
     ### make sure we have a trained model
-    model_path = os.path.join(dataset_path, args.RBP, 'model_to_use')
+    #model_path = os.path.join(dataset_path, args.RBP, 'model_to_use')
+    model_path = args.model_path
     if not os.path.exists(model_path):
-        raise Exception('Could not find model at "%s". Please make sure you have a trained model, and move it into a model_to_use directory' % model_path)
+        raise Exception('Could not find model at "%s".' % model_path)
 
 
     ## find and load our sequence data
@@ -395,29 +399,41 @@ if __name__ == '__main__':
         raise Exception('Could not find sequence data at "%s". Path does not exist.' %sequence_path)
 
     ## check if a saved probability file exists, ask if we want to use it
-    save_file = sequence_path.split('.', 1)[0] + "_%s_bertrbp_output.pk"%args.RBP
-    if os.path.exists(save_file) and not args.run_new_prediction:
-        probs = load_probabilities(save_file)
-    else:
-        tokenizer=DNATokenizer.from_pretrained(model_path) ## need the tokenizer to load the sequences
-        if args.genome:
-            print("Loading genomic sequence data from %s" %sequence_path)
-            dataset= load_fasta_genome(sequence_path, tokenizer)
-        elif sequence_path[-3:] == '.fa' or sequence_path[-6:] == '.fasta':
+    #save_file = sequence_path.split('.', 1)[0] + "_%s_bertrbp_output.pk"%args.RBP
+    #if os.path.exists(save_file) and not args.run_new_prediction:
+    #    probs = load_probabilities(save_file)
+    #else:
+    tokenizer=DNATokenizer.from_pretrained(model_path) ## need the tokenizer to load the sequences
+    if args.genome:
+        print("Loading genomic sequence data from %s" %sequence_path)
+        dataset= load_fasta_genome(sequence_path, tokenizer, args.kmer)
+    if sequence_path[-3:] == '.fa' or sequence_path[-6:] == '.fasta':
+        try:
+            dataset= load_fasta_genome(sequence_path, tokenizer, args.kmer)
+            print("Loaded genomic sequence data from %s" %sequence_path)
+        except:
             print("Loading RNA sequence data from fasta file: %s"%sequence_path)
-            dataset = load_fasta_sequences(sequence_path, tokenizer)
-        elif sequence_path[-4:] == '.tsv':
-            print("Loading RNA sequence data from .tsv file: %s"%sequence_path)
-            dataset = load_tsv_sequences(sequence_path, tokenizer)
-        else:
-            raise Exception("Not sure how to load sequence from '%s'. It doesn't seem to be a .fa, .fasta, or .tsv file" % sequence_path)
-        print("Running probability predictions against %s model....."%args.RBP)
-        probs = predict(dataset, model_path)
+            dataset = load_fasta_sequences(sequence_path, tokenizer, args.kmer)
+    elif sequence_path[-4:] == '.tsv':
+        print("Loading RNA sequence data from .tsv file: %s"%sequence_path)
+        dataset = load_tsv_sequences(sequence_path, tokenizer)
+    else:
+        raise Exception("Not sure how to load sequence from '%s'. It doesn't seem to be a .fa, .fasta, or .tsv file" % sequence_path)
+    print("Running probability predictions against model at ....."%model_path)
+    probs = predict(dataset, model_path)
+    probs['metainfo'] = {'model_path': model_path, 'sequence_path':sequence_path}
 
-    if args.save:
-        save_file = sequence_path.rsplit('.', 1)[0] + "_%s_bertrbp_output.pk" % args.RBP
-        save_probabilities(probs, save_file)
+    save_file = args.save_path
+    save_probabilities(probs, save_file)
 
-    if args.plot:
-        import pyqtgraph as pg
-        p = plot(probs, label=args.RBP)
+    #if args.plot:
+    #    import pyqtgraph as pg
+    #    p = plot(probs, label=args.RBP)
+
+
+#### refactor goals:
+#   - remove plotting
+#   - command line specification for which model to use
+#   - default is genome
+#   - default is saving
+#   - default is running a new prediction
