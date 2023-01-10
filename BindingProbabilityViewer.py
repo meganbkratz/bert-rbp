@@ -9,6 +9,8 @@ import config
 pg.setConfigOption('background', 'w')
 pg.setConfigOption('foreground', 'k')
 
+model_types = ['3mer_kyamada', '6mer_mbk']
+
 class FileLoader(pg.QtWidgets.QWidget):
 	def __init__(self, parent=None, baseDir=None):
 		pg.QtWidgets.QWidget.__init__(self, parent)
@@ -28,6 +30,8 @@ class FileLoader(pg.QtWidgets.QWidget):
 
 		self.baseDir = None
 		if baseDir is not None:
+			if not os.path.isdir(baseDir) and os.path.isfile(baseDir):
+				baseDir = os.path.dirname(baseDir)
 			self.setBaseDir(baseDir)
 
 	def baseDirBtnClicked(self):
@@ -103,7 +107,7 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		self.layout.setContentsMargins(3,3,3,3)
 		self.setLayout(self.layout)
 
-		self.fileLoader = FileLoader(self, os.path.dirname(probability_file))
+		self.fileLoader = FileLoader(self, probability_file)
 
 		self.plot_layout = pg.GraphicsLayout()
 		self.genomePlot = self.plot_layout.addPlot(labels={'left':('binding probability')}, axisItems={'bottom':NonscientificAxisItem('bottom', text='DNA nucleotide number')}, title='Genome-Aligned probabilities')
@@ -173,6 +177,7 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 	def newFileSelected(self, new, old):
 		if hasattr(new, 'path'):
 			self.loadFile(new.path)
+			self.probability_file = new.path
 
 	def loadFile(self, probability_file):
 		if os.path.isdir(probability_file):
@@ -190,6 +195,7 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 				self.splices[k]=treeItem
 
 		self.rbp = self.parseRBP(filename=probability_file)
+		self.model_type = self.parse_model_type(filename=probability_file)
 		self.rbp_stats = self.loadPerformanceData()
 		self.plot_rbp_stats()
 
@@ -208,29 +214,86 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 			else:
 				print("Could not parse RBP name from filename: {}. Found {} matches: {}".format(filename, len(names), names))
 
+	def parse_model_type(self, filename):
+		global model_types
+		if filename is None:
+			filename = self.probablity_file
+
+		#check if model_type is in the filename
+		model_type = []
+		for typ in model_types:
+			if typ in filename:
+				model_type.append(typ)
+		if len(model_type) == 1:
+			return model_type[0]
+
+		#check if model_type is the name of the directory we're in
+		dir_name = os.path.basename(os.path.dirname(filename))
+		if dir_name in model_types:
+			return dir_name
+
+		
+		print("Unable to determine model_type for file:%s" % filename)
+
+
+	# def loadPerformanceData(self):
+	# 	try:
+	# 		if self.rbp is None:
+	# 			print("Could not load performance data, no RBP found.")
+	# 			return
+
+	# 		filename = None
+	# 		if 'RBP_performance' in os.listdir(self.fileLoader.baseDir):
+	# 			filename = os.path.join(self.fileLoader.baseDir, 'RBP_performance', self.rbp+'_eval_performance.csv')
+	# 		if filename is None or not os.path.exists(filename):
+	# 			# try:
+	# 			# 	filename = os.path.join(config.rbp_performance_dir, self.rbp+'_eval_performance.csv')
+	# 			# except TypeError:
+	# 			# 	if config.rbp_performance_dir is None:
+	# 			# 		raise Exception("Please specify the rbp_performance_dir directory in your config.yaml file.")
+	# 			# 	raise
+
+	# 		if not os.path.exists(filename):
+	# 			print("Could not find perfomance data for {}. Looked here:{}".format(self.rbp, filename))
+	# 			return
+	# 		return np.genfromtxt(filename, delimiter=',', names=True, dtype=[float]+[int]*6)
+	# 	except:
+	# 		print("could not load performance data")
+
+
 	def loadPerformanceData(self):
-		print("loading performance data is disabled for right now.")
-		return
+		#print("loading performance data is disabled for right now.")
+		#return
 		
 		if self.rbp is None:
-			print("Could not load performance data, no RBP found.")
+			self.rbp = self.parseRBP()
+		if self.rbp is None:
+			print("Could not load performance data, don't know which RBP we're using.")
+			return
+
+		if self.model_type is None:
+			self.model_type = self.parse_model_type()
+		if self.model_type is None:
+			print("Could not load performance data, could not find model type")
 			return
 
 		filename = None
 		if 'RBP_performance' in os.listdir(self.fileLoader.baseDir):
-			filename = os.path.join(self.fileLoader.baseDir, 'RBP_performance', self.rbp+'_eval_performance.csv')
+			filename = os.path.join(self.fileLoader.baseDir, 'RBP_performance', self.model_type, self.rbp+'_eval_performance.csv')
 		if filename is None or not os.path.exists(filename):
-			try:
-				filename = os.path.join(config.rbp_performance_dir, self.rbp+'_eval_performance.csv')
-			except TypeError:
-				if config.rbp_performance_dir is None:
-					raise Exception("Please specify the rbp_performance_dir directory in your config.yaml file.")
-				raise
+			performance_dir = config.rbp_performance_dir
+			if performance_dir is None:
+				print("Could not find performance directory in either fileloader base directory or in config. Please specify the rbp_performance_dir directory in your config.yaml file.")
+				return
+			filename = os.path.join(config.rbp_performance_dir, self.model_type, self.rbp+'_eval_performance.csv')
+			if not os.path.exists(filename):
+				print('Could not find performance data for {} (model:{}). Looked here:{}'.format(self.rbp, self.model_type, filename))
+				return
 
-		if not os.path.exists(filename):
-			print("Could not find perfomance data for {}. Looked here:{}".format(self.rbp, filename))
-			return
-		return np.genfromtxt(filename, delimiter=',', names=True, dtype=[float]+[int]*6)
+		stats = np.genfromtxt(filename, delimiter=',', names=True, dtype=[float]+[int]*6)
+		print("Loading performance data for {}, model:{} (file:{})".format(self.rbp, self.model_type, filename))
+		return stats
+
 
 	def plot_rbp_stats(self):
 		self.rocPlot.clear()
