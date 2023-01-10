@@ -209,6 +209,9 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 				print("Could not parse RBP name from filename: {}. Found {} matches: {}".format(filename, len(names), names))
 
 	def loadPerformanceData(self):
+		print("loading performance data is disabled for right now.")
+		return
+		
 		if self.rbp is None:
 			print("Could not load performance data, no RBP found.")
 			return
