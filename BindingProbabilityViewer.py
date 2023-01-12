@@ -128,6 +128,8 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		self.ctrl.setLayout(grid)
 
 		self.spliceTree = pg.TreeWidget()
+		self.showBtn = pg.QtWidgets.QPushButton("Show all splices")
+		self.hideBtn = pg.QtWidgets.QPushButton("Hide all splices")
 		self.thresholdCheck = pg.QtWidgets.QCheckBox("Threshold:")
 		self.thresholdSpin = pg.SpinBox(value=0.95, bounds=[0,0.99], minStep=0.01)
 		label1 = pg.QtWidgets.QLabel("FPR:")
@@ -146,18 +148,19 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		self.histogramPlot.setMaximumSize(300,200)
 		self.thresholdLine = pg.InfiniteLine(pos=self.thresholdSpin.value())
 
-
-		grid.addWidget(self.spliceTree, 0,0, 3,2)
-		grid.addWidget(self.thresholdCheck, 3, 0, 1,1)
-		grid.addWidget(self.thresholdSpin, 3,1,1,1)
-		grid.addWidget(label1, 4,0,1,1)
-		grid.addWidget(self.fprLabel, 4,1,1,1)
-		grid.addWidget(label2, 5,0,1,1)
-		grid.addWidget(self.tprLabel, 5,1,1,1)
-		grid.addWidget(label3, 6,0,1,1)
-		grid.addWidget(self.fdrLabel, 6,1,1,1)
-		grid.addWidget(self.rocPlot, 7,0,2,2)
-		grid.addWidget(self.histogramPlot,9,0,2,2)
+		grid.addWidget(self.showBtn, 0,0,1,1)
+		grid.addWidget(self.hideBtn, 0,1,1,1)
+		grid.addWidget(self.spliceTree, 1,0,3,2)
+		grid.addWidget(self.thresholdCheck, 4,0,1,1)
+		grid.addWidget(self.thresholdSpin, 4,1,1,1)
+		grid.addWidget(label1, 5,0,1,1)
+		grid.addWidget(self.fprLabel, 5,1,1,1)
+		grid.addWidget(label2, 6,0,1,1)
+		grid.addWidget(self.tprLabel, 6,1,1,1)
+		grid.addWidget(label3, 7,0,1,1)
+		grid.addWidget(self.fdrLabel, 7,1,1,1)
+		grid.addWidget(self.rocPlot, 8,0,2,2)
+		grid.addWidget(self.histogramPlot,10,0,2,2)
 		grid.setRowStretch(0,10)
 
 		self.h_splitter = pg.QtWidgets.QSplitter(pg.QtCore.Qt.Horizontal)
@@ -173,6 +176,9 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		self.spliceTree.itemChanged.connect(self.spliceTreeItemChanged)
 		self.thresholdSpin.sigValueChanged.connect(self.thresholdValueChanged)
 		self.thresholdCheck.stateChanged.connect(self.thresholdValueChanged)
+
+		self.showBtn.clicked.connect(self.showAllSplices)
+		self.hideBtn.clicked.connect(self.hideAllSplices)
 
 	def newFileSelected(self, new, old):
 		if hasattr(new, 'path'):
@@ -196,10 +202,33 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 
 		self.rbp = self.parseRBP(filename=probability_file)
 		self.model_type = self.parse_model_type(filename=probability_file)
+		self.probability_file = probability_file
 		self.rbp_stats = self.loadPerformanceData()
 		self.plot_rbp_stats()
 
 		self.plot_probabilities()
+
+	def showAllSplices(self):
+		self.setAllSplices(True)
+		self.plot_probabilities()
+
+	def hideAllSplices(self):
+		self.setAllSplices(False)
+		self.plot_probabilities()
+
+	def setAllSplices(self, b):
+		if b:
+			checkState = pg.QtCore.Qt.CheckState.Checked 
+		else:
+			checkState = pg.QtCore.Qt.CheckState.Unchecked
+
+		try:
+			self.spliceTree.blockSignals(True)
+			for i in range(self.spliceTree.topLevelItemCount()):
+				self.spliceTree.topLevelItem(i).setCheckState(0, b)
+		finally:
+			self.spliceTree.blockSignals(False)
+
 
 	def parseRBP(self, filename=None):
 		rbp = self.probs.get('metainfo', {}).get('rbp_name')
