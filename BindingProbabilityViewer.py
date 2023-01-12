@@ -295,13 +295,13 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		#return
 		
 		if self.rbp is None:
-			self.rbp = self.parseRBP()
+			self.rbp = self.parseRBP(self.probability_file)
 		if self.rbp is None:
 			print("Could not load performance data, don't know which RBP we're using.")
 			return
 
 		if self.model_type is None:
-			self.model_type = self.parse_model_type()
+			self.model_type = self.parse_model_type(self.probability_file)
 		if self.model_type is None:
 			print("Could not load performance data, could not find model type")
 			return
