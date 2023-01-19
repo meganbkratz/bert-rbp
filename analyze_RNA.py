@@ -404,9 +404,9 @@ if __name__ == '__main__':
     #    probs = load_probabilities(save_file)
     #else:
     tokenizer=DNATokenizer.from_pretrained(model_path) ## need the tokenizer to load the sequences
-    if args.genome:
-        print("Loading genomic sequence data from %s" %sequence_path)
-        dataset= load_fasta_genome(sequence_path, tokenizer, args.kmer)
+    # if args.genome:
+    #     print("Loading genomic sequence data from %s" %sequence_path)
+    #     dataset= load_fasta_genome(sequence_path, tokenizer, args.kmer)
     if sequence_path[-3:] == '.fa' or sequence_path[-6:] == '.fasta':
         try:
             dataset= load_fasta_genome(sequence_path, tokenizer, args.kmer)
@@ -419,7 +419,7 @@ if __name__ == '__main__':
         dataset = load_tsv_sequences(sequence_path, tokenizer)
     else:
         raise Exception("Not sure how to load sequence from '%s'. It doesn't seem to be a .fa, .fasta, or .tsv file" % sequence_path)
-    print("Running probability predictions against model at ....."%model_path)
+    print("Running probability predictions against model at %s ....."%model_path)
     probs = predict(dataset, model_path)
     probs['metainfo'] = {'model_path': model_path, 'sequence_path':sequence_path}
 
