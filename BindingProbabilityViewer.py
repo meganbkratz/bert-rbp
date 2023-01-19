@@ -4,6 +4,7 @@ import numpy as np
 from plotting_helpers import load_probabilities
 import scipy.signal
 import config
+from analyze_RNA import find_binding_regions
 
 ## set plots to have white backgrounds
 pg.setConfigOption('background', 'w')
@@ -132,6 +133,8 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		self.hideBtn = pg.QtWidgets.QPushButton("Hide all splices")
 		self.thresholdCheck = pg.QtWidgets.QCheckBox("Threshold:")
 		self.thresholdSpin = pg.SpinBox(value=0.95, bounds=[0,0.99], minStep=0.01)
+		self.regionCheck = pg.QtWidgets.QCheckBox("Show regions - min length:")
+		self.regionSpin = pg.SpinBox(value=3, bounds=[1, None], int=True)
 		label1 = pg.QtWidgets.QLabel("FPR:")
 		label1.setAlignment(pg.QtCore.Qt.AlignRight)
 		label2 = pg.QtWidgets.QLabel("TPR:")
@@ -153,14 +156,16 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		grid.addWidget(self.spliceTree, 1,0,3,2)
 		grid.addWidget(self.thresholdCheck, 4,0,1,1)
 		grid.addWidget(self.thresholdSpin, 4,1,1,1)
-		grid.addWidget(label1, 5,0,1,1)
-		grid.addWidget(self.fprLabel, 5,1,1,1)
-		grid.addWidget(label2, 6,0,1,1)
-		grid.addWidget(self.tprLabel, 6,1,1,1)
-		grid.addWidget(label3, 7,0,1,1)
-		grid.addWidget(self.fdrLabel, 7,1,1,1)
-		grid.addWidget(self.rocPlot, 8,0,2,2)
-		grid.addWidget(self.histogramPlot,10,0,2,2)
+		grid.addWidget(self.regionCheck, 5,0,1,1)
+		grid.addWidget(self.regionSpin, 5,1,1,1)
+		grid.addWidget(label1, 6,0,1,1)
+		grid.addWidget(self.fprLabel, 6,1,1,1)
+		grid.addWidget(label2, 7,0,1,1)
+		grid.addWidget(self.tprLabel, 7,1,1,1)
+		grid.addWidget(label3, 8,0,1,1)
+		grid.addWidget(self.fdrLabel, 8,1,1,1)
+		grid.addWidget(self.rocPlot, 9,0,2,2)
+		grid.addWidget(self.histogramPlot,11,0,2,2)
 		grid.setRowStretch(0,10)
 
 		self.h_splitter = pg.QtWidgets.QSplitter(pg.QtCore.Qt.Horizontal)
@@ -176,6 +181,8 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		self.spliceTree.itemChanged.connect(self.spliceTreeItemChanged)
 		self.thresholdSpin.sigValueChanged.connect(self.thresholdValueChanged)
 		self.thresholdCheck.stateChanged.connect(self.thresholdValueChanged)
+		self.regionCheck.stateChanged.connect(self.plot_probabilities)
+		self.regionSpin.sigValueChanged.connect(self.plot_probabilities)
 
 		self.showBtn.clicked.connect(self.showAllSplices)
 		self.hideBtn.clicked.connect(self.hideAllSplices)
@@ -376,8 +383,12 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		hues = len(probs.keys())
 
 		applyFilter=True ## todo: make this a gui option
+		showRegions=self.regionCheck.isChecked()
+
 		useThreshold = self.thresholdCheck.isChecked()
 		threshold = self.thresholdSpin.value()
+		if showRegions:
+			regions = find_binding_regions(probs, threshold=threshold, n_contiguous=self.regionSpin.value())
 		for i,k in enumerate(self.splices.keys()):
 			if self.splices[k].checkState(0) == pg.QtCore.Qt.CheckState.Unchecked:
 				continue
@@ -394,12 +405,19 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 					self.genomePlot.plot(x=dna_indices, y=filtered, pen=pg.intColor(i, hues))
 				if useThreshold:
 					self.genomePlot.plot(x=dna_indices[thresholdMask], y=probs[k][thresholdMask], pen=None, symbolBrush=pg.intColor(i, hues), symbolPen='k')
+				if showRegions:
+					x = np.array([a for r in regions[k] for a in r['dna_indices']]) + start
+					self.genomePlot.plot(x=x, y=[1.04+0.02*i]*len(x), connect='pairs', pen={'color':pg.intColor(i, hues), 'width':5})
 			rna_indices = np.array(probs['indices']['rna_indices'][k])
 			self.rnaPlot.plot(x=rna_indices, y=probs[k], symbolBrush=pg.intColor(i, hues, alpha=alpha), name=k, pen=None, symbolPen=None)
 			if applyFilter:
 				self.rnaPlot.plot(x=rna_indices, y=filtered, pen=pg.intColor(i, hues))
 			if useThreshold:
 				self.rnaPlot.plot(x=rna_indices[thresholdMask], y=probs[k][thresholdMask], symbolBrush=pg.intColor(i, hues), pen=None, symbolPen='k')
+			if showRegions:
+				x = [a for r in regions[k] for a in r['rna_indices']]
+				self.rnaPlot.plot(x=x, y=[1.04+0.02*i]*len(x), connect='pairs', pen={'color':pg.intColor(i, hues), 'width':5})
+
 
 
 		
