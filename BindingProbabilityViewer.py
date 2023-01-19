@@ -4,10 +4,13 @@ import numpy as np
 from plotting_helpers import load_probabilities
 import scipy.signal
 import config
+from analyze_RNA import find_binding_regions
 
 ## set plots to have white backgrounds
 pg.setConfigOption('background', 'w')
 pg.setConfigOption('foreground', 'k')
+
+model_types = ['3mer_kyamada', '6mer_mbk']
 
 class FileLoader(pg.QtWidgets.QWidget):
 	def __init__(self, parent=None, baseDir=None):
@@ -28,6 +31,8 @@ class FileLoader(pg.QtWidgets.QWidget):
 
 		self.baseDir = None
 		if baseDir is not None:
+			if not os.path.isdir(baseDir) and os.path.isfile(baseDir):
+				baseDir = os.path.dirname(baseDir)
 			self.setBaseDir(baseDir)
 
 	def baseDirBtnClicked(self):
@@ -103,7 +108,7 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		self.layout.setContentsMargins(3,3,3,3)
 		self.setLayout(self.layout)
 
-		self.fileLoader = FileLoader(self, os.path.dirname(probability_file))
+		self.fileLoader = FileLoader(self, probability_file)
 
 		self.plot_layout = pg.GraphicsLayout()
 		self.genomePlot = self.plot_layout.addPlot(labels={'left':('binding probability')}, axisItems={'bottom':NonscientificAxisItem('bottom', text='DNA nucleotide number')}, title='Genome-Aligned probabilities')
@@ -124,8 +129,12 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		self.ctrl.setLayout(grid)
 
 		self.spliceTree = pg.TreeWidget()
+		self.showBtn = pg.QtWidgets.QPushButton("Show all splices")
+		self.hideBtn = pg.QtWidgets.QPushButton("Hide all splices")
 		self.thresholdCheck = pg.QtWidgets.QCheckBox("Threshold:")
 		self.thresholdSpin = pg.SpinBox(value=0.95, bounds=[0,0.99], minStep=0.01)
+		self.regionCheck = pg.QtWidgets.QCheckBox("Show regions - min length:")
+		self.regionSpin = pg.SpinBox(value=3, bounds=[1, None], int=True)
 		label1 = pg.QtWidgets.QLabel("FPR:")
 		label1.setAlignment(pg.QtCore.Qt.AlignRight)
 		label2 = pg.QtWidgets.QLabel("TPR:")
@@ -142,18 +151,21 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		self.histogramPlot.setMaximumSize(300,200)
 		self.thresholdLine = pg.InfiniteLine(pos=self.thresholdSpin.value())
 
-
-		grid.addWidget(self.spliceTree, 0,0, 3,2)
-		grid.addWidget(self.thresholdCheck, 3, 0, 1,1)
-		grid.addWidget(self.thresholdSpin, 3,1,1,1)
-		grid.addWidget(label1, 4,0,1,1)
-		grid.addWidget(self.fprLabel, 4,1,1,1)
-		grid.addWidget(label2, 5,0,1,1)
-		grid.addWidget(self.tprLabel, 5,1,1,1)
-		grid.addWidget(label3, 6,0,1,1)
-		grid.addWidget(self.fdrLabel, 6,1,1,1)
-		grid.addWidget(self.rocPlot, 7,0,2,2)
-		grid.addWidget(self.histogramPlot,9,0,2,2)
+		grid.addWidget(self.showBtn, 0,0,1,1)
+		grid.addWidget(self.hideBtn, 0,1,1,1)
+		grid.addWidget(self.spliceTree, 1,0,3,2)
+		grid.addWidget(self.thresholdCheck, 4,0,1,1)
+		grid.addWidget(self.thresholdSpin, 4,1,1,1)
+		grid.addWidget(self.regionCheck, 5,0,1,1)
+		grid.addWidget(self.regionSpin, 5,1,1,1)
+		grid.addWidget(label1, 6,0,1,1)
+		grid.addWidget(self.fprLabel, 6,1,1,1)
+		grid.addWidget(label2, 7,0,1,1)
+		grid.addWidget(self.tprLabel, 7,1,1,1)
+		grid.addWidget(label3, 8,0,1,1)
+		grid.addWidget(self.fdrLabel, 8,1,1,1)
+		grid.addWidget(self.rocPlot, 9,0,2,2)
+		grid.addWidget(self.histogramPlot,11,0,2,2)
 		grid.setRowStretch(0,10)
 
 		self.h_splitter = pg.QtWidgets.QSplitter(pg.QtCore.Qt.Horizontal)
@@ -169,10 +181,16 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		self.spliceTree.itemChanged.connect(self.spliceTreeItemChanged)
 		self.thresholdSpin.sigValueChanged.connect(self.thresholdValueChanged)
 		self.thresholdCheck.stateChanged.connect(self.thresholdValueChanged)
+		self.regionCheck.stateChanged.connect(self.plot_probabilities)
+		self.regionSpin.sigValueChanged.connect(self.plot_probabilities)
+
+		self.showBtn.clicked.connect(self.showAllSplices)
+		self.hideBtn.clicked.connect(self.hideAllSplices)
 
 	def newFileSelected(self, new, old):
 		if hasattr(new, 'path'):
 			self.loadFile(new.path)
+			self.probability_file = new.path
 
 	def loadFile(self, probability_file):
 		if os.path.isdir(probability_file):
@@ -190,10 +208,34 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 				self.splices[k]=treeItem
 
 		self.rbp = self.parseRBP(filename=probability_file)
+		self.model_type = self.parse_model_type(filename=probability_file)
+		self.probability_file = probability_file
 		self.rbp_stats = self.loadPerformanceData()
 		self.plot_rbp_stats()
 
 		self.plot_probabilities()
+
+	def showAllSplices(self):
+		self.setAllSplices(True)
+		self.plot_probabilities()
+
+	def hideAllSplices(self):
+		self.setAllSplices(False)
+		self.plot_probabilities()
+
+	def setAllSplices(self, b):
+		if b:
+			checkState = pg.QtCore.Qt.CheckState.Checked 
+		else:
+			checkState = pg.QtCore.Qt.CheckState.Unchecked
+
+		try:
+			self.spliceTree.blockSignals(True)
+			for i in range(self.spliceTree.topLevelItemCount()):
+				self.spliceTree.topLevelItem(i).setCheckState(0, b)
+		finally:
+			self.spliceTree.blockSignals(False)
+
 
 	def parseRBP(self, filename=None):
 		rbp = self.probs.get('metainfo', {}).get('rbp_name')
@@ -208,26 +250,86 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 			else:
 				print("Could not parse RBP name from filename: {}. Found {} matches: {}".format(filename, len(names), names))
 
+	def parse_model_type(self, filename):
+		global model_types
+		if filename is None:
+			filename = self.probablity_file
+
+		#check if model_type is in the filename
+		model_type = []
+		for typ in model_types:
+			if typ in filename:
+				model_type.append(typ)
+		if len(model_type) == 1:
+			return model_type[0]
+
+		#check if model_type is the name of the directory we're in
+		dir_name = os.path.basename(os.path.dirname(filename))
+		if dir_name in model_types:
+			return dir_name
+
+		
+		print("Unable to determine model_type for file:%s" % filename)
+
+
+	# def loadPerformanceData(self):
+	# 	try:
+	# 		if self.rbp is None:
+	# 			print("Could not load performance data, no RBP found.")
+	# 			return
+
+	# 		filename = None
+	# 		if 'RBP_performance' in os.listdir(self.fileLoader.baseDir):
+	# 			filename = os.path.join(self.fileLoader.baseDir, 'RBP_performance', self.rbp+'_eval_performance.csv')
+	# 		if filename is None or not os.path.exists(filename):
+	# 			# try:
+	# 			# 	filename = os.path.join(config.rbp_performance_dir, self.rbp+'_eval_performance.csv')
+	# 			# except TypeError:
+	# 			# 	if config.rbp_performance_dir is None:
+	# 			# 		raise Exception("Please specify the rbp_performance_dir directory in your config.yaml file.")
+	# 			# 	raise
+
+	# 		if not os.path.exists(filename):
+	# 			print("Could not find perfomance data for {}. Looked here:{}".format(self.rbp, filename))
+	# 			return
+	# 		return np.genfromtxt(filename, delimiter=',', names=True, dtype=[float]+[int]*6)
+	# 	except:
+	# 		print("could not load performance data")
+
+
 	def loadPerformanceData(self):
+		#print("loading performance data is disabled for right now.")
+		#return
+		
 		if self.rbp is None:
-			print("Could not load performance data, no RBP found.")
+			self.rbp = self.parseRBP(self.probability_file)
+		if self.rbp is None:
+			print("Could not load performance data, don't know which RBP we're using.")
+			return
+
+		if self.model_type is None:
+			self.model_type = self.parse_model_type(self.probability_file)
+		if self.model_type is None:
+			print("Could not load performance data, could not find model type")
 			return
 
 		filename = None
 		if 'RBP_performance' in os.listdir(self.fileLoader.baseDir):
-			filename = os.path.join(self.fileLoader.baseDir, 'RBP_performance', self.rbp+'_eval_performance.csv')
+			filename = os.path.join(self.fileLoader.baseDir, 'RBP_performance', self.model_type, self.rbp+'_eval_performance.csv')
 		if filename is None or not os.path.exists(filename):
-			try:
-				filename = os.path.join(config.rbp_performance_dir, self.rbp+'_eval_performance.csv')
-			except TypeError:
-				if config.rbp_performance_dir is None:
-					raise Exception("Please specify the rbp_performance_dir directory in your config.yaml file.")
-				raise
+			performance_dir = config.rbp_performance_dir
+			if performance_dir is None:
+				print("Could not find performance directory in either fileloader base directory or in config. Please specify the rbp_performance_dir directory in your config.yaml file.")
+				return
+			filename = os.path.join(config.rbp_performance_dir, self.model_type, self.rbp+'_eval_performance.csv')
+			if not os.path.exists(filename):
+				print('Could not find performance data for {} (model:{}). Looked here:{}'.format(self.rbp, self.model_type, filename))
+				return
 
-		if not os.path.exists(filename):
-			print("Could not find perfomance data for {}. Looked here:{}".format(self.rbp, filename))
-			return
-		return np.genfromtxt(filename, delimiter=',', names=True, dtype=[float]+[int]*6)
+		stats = np.genfromtxt(filename, delimiter=',', names=True, dtype=[float]+[int]*6)
+		print("Loading performance data for {}, model:{} (file:{})".format(self.rbp, self.model_type, filename))
+		return stats
+
 
 	def plot_rbp_stats(self):
 		self.rocPlot.clear()
@@ -281,8 +383,12 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		hues = len(probs.keys())
 
 		applyFilter=True ## todo: make this a gui option
+		showRegions=self.regionCheck.isChecked()
+
 		useThreshold = self.thresholdCheck.isChecked()
 		threshold = self.thresholdSpin.value()
+		if showRegions:
+			regions = find_binding_regions(probs, threshold=threshold, n_contiguous=self.regionSpin.value())
 		for i,k in enumerate(self.splices.keys()):
 			if self.splices[k].checkState(0) == pg.QtCore.Qt.CheckState.Unchecked:
 				continue
@@ -299,12 +405,19 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 					self.genomePlot.plot(x=dna_indices, y=filtered, pen=pg.intColor(i, hues))
 				if useThreshold:
 					self.genomePlot.plot(x=dna_indices[thresholdMask], y=probs[k][thresholdMask], pen=None, symbolBrush=pg.intColor(i, hues), symbolPen='k')
+				if showRegions:
+					x = np.array([a for r in regions[k] for a in r['dna_indices']]) + start
+					self.genomePlot.plot(x=x, y=[1.04+0.02*i]*len(x), connect='pairs', pen={'color':pg.intColor(i, hues), 'width':5})
 			rna_indices = np.array(probs['indices']['rna_indices'][k])
 			self.rnaPlot.plot(x=rna_indices, y=probs[k], symbolBrush=pg.intColor(i, hues, alpha=alpha), name=k, pen=None, symbolPen=None)
 			if applyFilter:
 				self.rnaPlot.plot(x=rna_indices, y=filtered, pen=pg.intColor(i, hues))
 			if useThreshold:
 				self.rnaPlot.plot(x=rna_indices[thresholdMask], y=probs[k][thresholdMask], symbolBrush=pg.intColor(i, hues), pen=None, symbolPen='k')
+			if showRegions:
+				x = [a for r in regions[k] for a in r['rna_indices']]
+				self.rnaPlot.plot(x=x, y=[1.04+0.02*i]*len(x), connect='pairs', pen={'color':pg.intColor(i, hues), 'width':5})
+
 
 
 		
