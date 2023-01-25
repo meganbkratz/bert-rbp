@@ -4,7 +4,7 @@ import numpy as np
 from plotting_helpers import load_probabilities
 import scipy.signal
 import config
-from analyze_RNA import find_binding_regions
+from region_analysis import find_binding_regions
 
 ## set plots to have white backgrounds
 pg.setConfigOption('background', 'w')
