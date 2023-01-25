@@ -1,4 +1,5 @@
-
+import os, re
+from analyze_RNA import load_probabilities
 
 
 def find_contiguous_sites(probs, threshold=0.95, n_contiguous=3):
@@ -58,8 +59,68 @@ def find_binding_regions(probs, threshold=0.95, n_contiguous=3):
     return results
 
 
-def export_regions():
+def export_regions(model_dir, threshold=0.95, n_contiguous=3):
     ### save 2 .csv files:
     #       1) one record per RBP per splice - fields: Splice, RBP, n_regions, model_type, threshold, n_contiguous
     #       2) one record per region (or site?) fields: Splice, RBP, model_type, threshold, n_contiguous, binding_probability (individual or mean), region or site coordinates, region length?, region id 
-    pass
+    summary_file = os.path.join(model_dir, 'binding_region_summary.csv')
+    region_file = os.path.join(model_dir, 'binding_regions.csv')
+
+    with open(summary_file, 'w') as f:
+        f.write("parent_directory:, %s, \n" % model_dir)
+        f.write("RBP, Splice, n_regions, model_type, threshold, n_contiguous, \n")
+
+    with open(region_file, 'w') as f:
+        f.write("parent_directory:, %s, \n" % model_dir)
+        f.write("RBP, Splice, model_type, threshold, n_contiguous, mean_binding_probability, dna_coordinates, region_length, prob_file_indices \n")
+
+
+    for prob_file in sorted(os.listdir(model_dir)):
+        if os.path.splitext(prob_file)[1] == '.pk':
+            probs = load_probabilities(os.path.join(model_dir, prob_file))
+            regions = find_binding_regions(probs, threshold=threshold, n_contiguous=n_contiguous)
+            rbp = parseRBP(probs, filename=prob_file)
+            with open(summary_file, 'a') as f:
+                for splice in sorted(regions.keys()):
+                    f.write("{rbp}, {splice}, {n_regions}, {model_type}, {threshold}, {n_contiguous}, \n".format(
+                        rbp=rbp, 
+                        splice=splice, 
+                        n_regions=len(regions[splice]), 
+                        model_type=os.path.split(model_dir)[1], 
+                        threshold=threshold, 
+                        n_contiguous=n_contiguous))
+            with open(region_file, 'a') as f:
+                for splice in sorted(regions.keys()):
+                    chrom = probs['indices']['metainfo'][splice]['chromosome']
+                    start = probs['indices']['metainfo'][splice]['range_start']
+                    for r in regions[splice]:
+                        f.write("{rbp}, {splice}, {model_type}, {threshold}, {n_contiguous}, {probability}, {coordinates}, {region_len}, {prob_file_indices}, \n".format(
+                            rbp=rbp,
+                            splice=splice,
+                            model_type=os.path.split(model_dir)[1],
+                            threshold=threshold,
+                            n_contiguous=n_contiguous,
+                            probability=r['mean_probability'],
+                            coordinates="chr{chrom}:{start}-{end}".format(
+                                chrom=chrom,
+                                start=r['dna_indices'][0]+start,
+                                end=r['dna_indices'][1]+start),
+                            prob_file_indices=r['indices'],
+                            region_len=r['region_length']
+                            ))
+    print("Finished exporting binding region info for %s" % model_dir)
+
+def parseRBP(probs, filename=None):
+        rbp = probs.get('metainfo', {}).get('rbp_name')
+        if rbp is not None:
+            return rbp
+
+        if filename is not None:
+            pattern = re.compile('_[A-Z0-9]*_')
+            names = pattern.findall(filename)
+            if len(names) == 1:
+                return names[0].strip('_')
+            else:
+                print("Could not parse RBP name from filename: {}. Found {} matches: {}".format(filename, len(names), names))
+
+
