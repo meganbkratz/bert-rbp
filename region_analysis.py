@@ -1,4 +1,4 @@
-import os, re
+import os, re, argparse
 from analyze_RNA import load_probabilities
 
 
@@ -59,12 +59,12 @@ def find_binding_regions(probs, threshold=0.95, n_contiguous=3):
     return results
 
 
-def export_regions(model_dir, threshold=0.95, n_contiguous=3):
+def export_regions(model_dir, threshold=0.95, n_contiguous=3, save_prefix="binding_regions"):
     ### save 2 .csv files:
     #       1) one record per RBP per splice - fields: Splice, RBP, n_regions, model_type, threshold, n_contiguous
     #       2) one record per region (or site?) fields: Splice, RBP, model_type, threshold, n_contiguous, binding_probability (individual or mean), region or site coordinates, region length?, region id 
-    summary_file = os.path.join(model_dir, 'binding_region_summary.csv')
-    region_file = os.path.join(model_dir, 'binding_regions.csv')
+    summary_file = os.path.join(model_dir, save_prefix+'_summary.csv')
+    region_file = os.path.join(model_dir, save_prefix+'.csv')
 
     with open(summary_file, 'w') as f:
         f.write("parent_directory:, %s, \n" % model_dir)
@@ -77,7 +77,7 @@ def export_regions(model_dir, threshold=0.95, n_contiguous=3):
 
     for prob_file in sorted(os.listdir(model_dir)):
         if os.path.splitext(prob_file)[1] == '.pk':
-            probs = load_probabilities(os.path.join(model_dir, prob_file))
+            probs = load_probabilities(os.path.join(model_dir, prob_file), quiet=True)
             regions = find_binding_regions(probs, threshold=threshold, n_contiguous=n_contiguous)
             rbp = parseRBP(probs, filename=prob_file)
             with open(summary_file, 'a') as f:
@@ -108,7 +108,7 @@ def export_regions(model_dir, threshold=0.95, n_contiguous=3):
                             prob_file_indices=r['indices'],
                             region_len=r['region_length']
                             ))
-    print("Finished exporting binding region info for %s" % model_dir)
+    print("Finished exporting binding region info for %s. (saved as: %s & %s)" % (model_dir, os.path.split(summary_file)[1], os.path.split(region_file)[1]))
 
 def parseRBP(probs, filename=None):
         rbp = probs.get('metainfo', {}).get('rbp_name')
@@ -124,3 +124,13 @@ def parseRBP(probs, filename=None):
                 print("Could not parse RBP name from filename: {}. Found {} matches: {}".format(filename, len(names), names))
 
 
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument("--parent_directory", type=str, help="The path to the directory where the model_output.pk files are stored.")
+    parser.add_argument("--threshold", type=float, default=0.95)
+    parser.add_argument("--n_contiguous", type=int, default=3)
+
+    args = parser.parse_args()
+
+    export_regions(args.parent_directory, threshold=args.threshold, n_contiguous=args.n_contiguous, save_prefix='binding_regions_%iN'%args.n_contiguous)

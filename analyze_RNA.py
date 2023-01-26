@@ -313,8 +313,9 @@ def save_probabilities(probs, file_name):
     with open(file_name, 'wb') as f:
         pickle.dump(probs, f)
 
-def load_probabilities(file_name):
-    print("Loading model output from %s" %file_name)
+def load_probabilities(file_name, quiet=False):
+    if not quiet:
+        print("Loading model output from %s" %file_name)
     import pickle
     with open(file_name, 'rb') as f:
         probs = pickle.load(f)
