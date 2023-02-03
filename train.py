@@ -101,7 +101,7 @@ def train(model_path, tokenizer, training_dataset, eval_dataset, **kwargs):
 	no_decay = ["bias", "LayerNorm.weight"] ## <- we're not gonna do weight decay for these ones
 	optimizer_grouped_parameters = [
 		{"params": [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)], "weight_decay": params['weight_decay'],}, # <- apply weight decay
-		{"params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)], "weight_decay": 0.0},]	# <- don't apply weight decay
+		{"params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)], "weight_decay": 0.0},]  # <- don't apply weight decay
 
 	optimizer = AdamW(optimizer_grouped_parameters, lr=params['learning_rate']) 
 	total_steps = len(train_dataloader) * params['n_epochs']
@@ -109,7 +109,7 @@ def train(model_path, tokenizer, training_dataset, eval_dataset, **kwargs):
 	scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=warmup_steps, num_training_steps=total_steps)
 
 	#if n_gpu > 1:
-	#	model = torch.nn.DataParallel(model)
+	#       model = torch.nn.DataParallel(model)
 
 	training_metrics = []
 	validation_metrics = []
@@ -133,7 +133,7 @@ def train(model_path, tokenizer, training_dataset, eval_dataset, **kwargs):
 			inputs = {"input_ids": batch[0], "attention_mask": batch[1], "token_type_ids": batch[2], "labels": batch[3].unsqueeze(1)}
 			#print('train - run through model')
 			#for k,v in inputs.items():
-			#	print("    ",k,':', v.shape)
+			#       print("    ",k,':', v.shape)
 			outputs = model(**inputs) # <- this is the line the warning is coming from
 			loss = outputs[0] # model outputs are always tuple in transformers (see doc)
 			#print('   loss:', loss)
@@ -151,11 +151,11 @@ def train(model_path, tokenizer, training_dataset, eval_dataset, **kwargs):
 				validation_metrics.append({"name": 'epoch{}_step{}'.format(epoch, step), 'metrics':evaluate(model, eval_dataset), 'epoch':epoch, 'step':step})
 
 				print("Epoch%i_step%i: train_loss_1=%f, validation_loss:%f, train_auroc:%f, validation_auroc:%f"%(epoch, step+1, training_metrics[-1]['metrics']['loss'], validation_metrics[-1]['metrics']['loss'],training_metrics[-1]['metrics']['auroc'], validation_metrics[-1]['metrics']['auroc']))
-				#print("				train_auroc:%f, validation_auroc:%f" % (training_metrics[-1]['metrics']['auroc'], validation_metrics[-1]['metrics']['auroc']))
+				#print("                                train_auroc:%f, validation_auroc:%f" % (training_metrics[-1]['metrics']['auroc'], validation_metrics[-1]['metrics']['auroc']))
 				total_time = time.time() - t0
 				elapsed_time = time.time() - t_last
 				t_last = time.time()
-				print('		total_time:', str(datetime.timedelta(seconds=int(total_time))), 'time_since_last_check:', str(datetime.timedelta(seconds=int(elapsed_time))))
+				print('         total_time:', str(datetime.timedelta(seconds=int(total_time))), 'time_since_last_check:', str(datetime.timedelta(seconds=int(elapsed_time))))
 	return model, {'training':training_metrics, 'validation':validation_metrics, 'hyperparameters':params}  
 
 def evaluate(model, dataset):
@@ -218,8 +218,14 @@ if __name__ == '__main__':
 	elif args.kmer == 6:
 		model_path = '/proj/magnuslb/users/mkratz/bert-rbp/dnabert/6-new-12w-0/'
 		data_dir = '/proj/magnuslb/users/mkratz/bert-rbp/datasets_6/%s/training_sample_finetune/' % args.RBP
+	elif args.kmer == 5:
+		model_path = '/proj/magnuslb/users/mkratz/bert-rbp/dnabert/5-new-12w-0/'
+		data_dir = '/proj/magnuslb/users/mkratz/bert-rbp/datasets_5/%s/training_sample_finetune/' % args.RBP
+	elif args.kmer == 4:
+		model_path = '/proj/magnuslb/users/mkratz/bert-rbp/dnabert/4-new-12w-0/'
+		data_dir = '/proj/magnuslb/users/mkratz/bert-rbp/datasets_4/%s/training_sample_finetune/' % args.RBP
 	else:
-		raise Exception('Only 3 and 6 kmer models are currently supported (but its easy to add others).')
+		raise Exception('Only 3,4,5 and 6 kmer models are currently supported')
 
 	#save_path = '/proj/magnuslb/users/mkratz/bert-rbp/datasets/%s/new_trained_model_2e-5LR_0.2dropout' % args.RBP
 	save_path = args.save_path
