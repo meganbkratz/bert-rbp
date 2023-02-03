@@ -426,6 +426,40 @@ def make_window(motif_seqs, pos_seqs, window_size=24):
 
     return new_motif_seqs
 
+def convert_seqs_to_RNA(merged_motif_seqs):
+    #import IPython
+    #IPython.embed()
+
+    converted = {}
+    for k, v in merged_motif_seqs.items():
+        k_new = k.replace('T', 'U')
+        converted[k_new] = {
+            'seq_idx': v['seq_idx'],
+            'atten_region_pos': v['atten_region_pos'],
+            }
+        new_seqs = []
+        for seq in v['seqs']:
+            new_seqs.append(seq.replace('T', 'U'))
+        converted[k_new]['seqs'] = new_seqs 
+
+    return converted
+
+def convert_dict_to_RNA(merged_motif_dict):
+    #import IPython
+    #IPython.embed()
+
+    converted = {}
+    for k, v in merged_motif_dict.items():
+        k_new = k.replace('T', 'U')
+        l = []
+        for x in v:
+            if type(x) == str:
+                l.append(x.replace('T', 'U'))
+            else:
+                l.append(x)
+        converted[k_new] = l
+
+    return converted
 ### make full pipeline
 def motif_analysis(pos_seqs,
                    neg_seqs,
@@ -564,6 +598,8 @@ def motif_analysis(pos_seqs,
     if verbose:
         print("* Removing motifs with less than {} instances".format(min_n_motif))
     merged_motif_seqs = {k: coords for k, coords in merged_motif_seqs.items() if len(coords['seq_idx']) >= min_n_motif}
+    merged_motif_seqs = convert_seqs_to_RNA(merged_motif_seqs)
+    merged_motif_dict = convert_dict_to_RNA(merged_motif_dict)
     
     # selecting top N motifs
     if verbose:
@@ -590,7 +626,8 @@ def motif_analysis(pos_seqs,
                     f.write(seq+'\n')
             # make weblogo
             seqs = [Seq(v) for i,v in enumerate(instances['seqs'])]
-            m = motifs.create(seqs)
+            #print("Seqs:", seqs)
+            m = motifs.create(seqs, alphabet='ACGTU')
             
             m.weblogo(os.path.join(save_file_dir, "motif_{:0=3}_{}_weblogo.png".format(len(instances['seq_idx']), motif)), 
                       format='png_print', show_fineprint=False, show_ends=False, 
