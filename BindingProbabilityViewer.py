@@ -5,6 +5,8 @@ from plotting_helpers import load_probabilities
 import scipy.signal
 import config
 from region_analysis import find_binding_regions
+from Bio import SeqIO
+from util import parse_dna_range
 
 ## set plots to have white backgrounds
 pg.setConfigOption('background', 'w')
@@ -70,32 +72,44 @@ class FileLoader(pg.QtWidgets.QWidget):
 class NonscientificAxisItem(pg.AxisItem):
 	###Need an axis that doesn't convert big numbers to SI notation so that we can display DNA addresses on plots
 
-    def tickStrings(self, values, scale, spacing):
-        if self.logMode:
-            return self.logTickStrings(values, scale, spacing)
+	def tickStrings(self, values, scale, spacing):
+		if self.logMode:
+			return self.logTickStrings(values, scale, spacing)
 
-        places = max(0, np.ceil(-np.log10(spacing*scale)))
-        strings = []
-        for v in values:
-            vs = v * scale
-            vstr = ("%%0.%df" % places) % vs
-            strings.append(vstr)
-        return strings
+		places = max(0, np.ceil(-np.log10(spacing*scale)))
+		strings = []
+		for v in values:
+			vs = v * scale
+			vstr = ("%%0.%df" % places) % vs
+			strings.append(vstr)
+		return strings
 
 def besselFilter(data, cutoff, order=1, dt=None, btype='low', bidir=True):
-    """return data passed through bessel filter"""
+	"""return data passed through bessel filter"""
 
-    if dt is None:
-    	dt = 1.0
+	if dt is None:
+		dt = 1.0
 
-    b,a = scipy.signal.bessel(order, cutoff * dt, btype=btype) 
+	b,a = scipy.signal.bessel(order, cutoff * dt, btype=btype) 
 
-    if bidir:
-        d1 = scipy.signal.lfilter(b, a, scipy.signal.lfilter(b, a, data)[::-1])[::-1]
-    else:
-        d1 = scipy.signal.lfilter(b, a, data)
+	if bidir:
+		d1 = scipy.signal.lfilter(b, a, scipy.signal.lfilter(b, a, data)[::-1])[::-1]
+	else:
+		d1 = scipy.signal.lfilter(b, a, data)
 
-    return d1
+	return d1
+
+	
+def createSymbol(character):
+	mysymbol = pg.QtGui.QPainterPath()
+	mysymbol.addText(0, 0, pg.QtGui.QFont("San Serif", 10), character)
+	br = mysymbol.boundingRect()
+	scale = min(1. / br.width(), 1. / br.height())
+	tr = pg.QtGui.QTransform()
+	tr.scale(scale, scale)
+	tr.translate(-br.x() - br.width()/2., -br.y() - br.height()/2.)
+	mysymbol = tr.map(mysymbol)
+	return mysymbol
 
 
 class BindingProbabilityViewer(pg.QtWidgets.QWidget):
@@ -113,8 +127,10 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		self.plot_layout = pg.GraphicsLayout()
 		self.genomePlot = self.plot_layout.addPlot(labels={'left':('binding probability')}, axisItems={'bottom':NonscientificAxisItem('bottom', text='DNA nucleotide number')}, title='Genome-Aligned probabilities')
 		self.plot_layout.nextRow()
+		#self.sequencePlot = self.plot_layout.addPlot(axisItems={'bottom':NonscientificAxisItem('bottom', text='DNA nucleotide number')}, title="sequence")
 		self.rnaPlot = self.plot_layout.addPlot(labels={'left':'binding probability', 'bottom':'RNA nucleotide number'}, title='RNA-aligned probabilities')
 		self.genomePlot.getAxis('bottom').enableAutoSIPrefix(False)
+		#self.sequencePlot.getAxis('bottom').enableAutoSIPrefix(False)
 
 		for p in [self.genomePlot, self.rnaPlot]:
 			p.addLegend()
@@ -123,6 +139,10 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		view = pg.GraphicsView()
 		view.setCentralItem(self.plot_layout)
 		view.setContentsMargins(0,0,0,0)
+
+		self.probability_file = None 
+		self.sequences = None 
+
 
 		self.ctrl = pg.QtWidgets.QWidget()
 		grid = pg.QtWidgets.QGridLayout()
@@ -212,8 +232,41 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		self.probability_file = probability_file
 		self.rbp_stats = self.loadPerformanceData()
 		self.plot_rbp_stats()
+		self.sequences = None 
 
 		self.plot_probabilities()
+
+	def load_sequence(self):
+		if self.sequences is not None:
+			return self.sequences
+		fasta = self.find_fasta_file(self.probability_file)
+		if fasta is None:
+			self.sequences = {}
+			return {}
+
+		splices = [x for x in SeqIO.parse(fasta, 'fasta')]
+
+		sequences = {}
+
+		for splice in splices:
+			dna = np.array([s for s in splice.seq])
+			mask = np.char.isupper(dna)
+			rna = dna[mask]
+			indices = np.argwhere(mask)[:,0]
+
+			chromosome, start, end = parse_dna_range(splice.description)
+			sequences[splice.id] = {'sequence':rna, 'dna_indices':indices+start}
+
+		self.sequences = sequences
+		return sequences
+
+	def find_fasta_file(self, prob_file):
+		species_dir = os.path.dirname(os.path.dirname(prob_file))
+		for f in os.listdir(species_dir):
+			if f[-13:] == 'genomic.fasta':
+				return os.path.join(species_dir, f)
+		print("Unable to find .fasta file for %s. Can't plot sequences" % prob_file)
+
 
 	def showAllSplices(self):
 		self.setAllSplices(True)
@@ -273,28 +326,28 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 
 
 	# def loadPerformanceData(self):
-	# 	try:
-	# 		if self.rbp is None:
-	# 			print("Could not load performance data, no RBP found.")
-	# 			return
+	#   try:
+	#       if self.rbp is None:
+	#           print("Could not load performance data, no RBP found.")
+	#           return
 
-	# 		filename = None
-	# 		if 'RBP_performance' in os.listdir(self.fileLoader.baseDir):
-	# 			filename = os.path.join(self.fileLoader.baseDir, 'RBP_performance', self.rbp+'_eval_performance.csv')
-	# 		if filename is None or not os.path.exists(filename):
-	# 			# try:
-	# 			# 	filename = os.path.join(config.rbp_performance_dir, self.rbp+'_eval_performance.csv')
-	# 			# except TypeError:
-	# 			# 	if config.rbp_performance_dir is None:
-	# 			# 		raise Exception("Please specify the rbp_performance_dir directory in your config.yaml file.")
-	# 			# 	raise
+	#       filename = None
+	#       if 'RBP_performance' in os.listdir(self.fileLoader.baseDir):
+	#           filename = os.path.join(self.fileLoader.baseDir, 'RBP_performance', self.rbp+'_eval_performance.csv')
+	#       if filename is None or not os.path.exists(filename):
+	#           # try:
+	#           #   filename = os.path.join(config.rbp_performance_dir, self.rbp+'_eval_performance.csv')
+	#           # except TypeError:
+	#           #   if config.rbp_performance_dir is None:
+	#           #       raise Exception("Please specify the rbp_performance_dir directory in your config.yaml file.")
+	#           #   raise
 
-	# 		if not os.path.exists(filename):
-	# 			print("Could not find perfomance data for {}. Looked here:{}".format(self.rbp, filename))
-	# 			return
-	# 		return np.genfromtxt(filename, delimiter=',', names=True, dtype=[float]+[int]*6)
-	# 	except:
-	# 		print("could not load performance data")
+	#       if not os.path.exists(filename):
+	#           print("Could not find perfomance data for {}. Looked here:{}".format(self.rbp, filename))
+	#           return
+	#       return np.genfromtxt(filename, delimiter=',', names=True, dtype=[float]+[int]*6)
+	#   except:
+	#       print("could not load performance data")
 
 
 	def loadPerformanceData(self):
@@ -384,14 +437,25 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 
 		applyFilter=True ## todo: make this a gui option
 		showRegions=self.regionCheck.isChecked()
+		showSequences=True
+		if showSequences:
+			symbols={
+				'A':createSymbol('A'),
+				'C':createSymbol('C'),
+				'T':createSymbol('U'),
+				'G':createSymbol('G')}
+
 
 		useThreshold = self.thresholdCheck.isChecked()
 		threshold = self.thresholdSpin.value()
 		if showRegions:
 			regions = find_binding_regions(probs, threshold=threshold, n_contiguous=self.regionSpin.value())
+		if showSequences:
+			sequences = self.load_sequence()
 		for i,k in enumerate(self.splices.keys()):
 			if self.splices[k].checkState(0) == pg.QtCore.Qt.CheckState.Unchecked:
 				continue
+			color = pg.intColor(i, hues)
 			if applyFilter:
 				filtered = besselFilter(probs[k], 0.1, dt=1)
 			if useThreshold:
@@ -402,21 +466,32 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 				dna_indices = np.array(probs['indices']['dna_indices'][k]) + start
 				self.genomePlot.plot(x=dna_indices, y=probs[k], symbolBrush=pg.intColor(i, hues, alpha=alpha), name=k, pen=None, symbolPen=None)
 				if applyFilter:
-					self.genomePlot.plot(x=dna_indices, y=filtered, pen=pg.intColor(i, hues))
+					connect = np.ones(len(dna_indices))
+					breaks = np.argwhere(np.diff(dna_indices) > 10)[:,0]
+					connect[breaks] = 0
+					self.genomePlot.plot(x=dna_indices, y=filtered, pen=color, connect=connect)
 				if useThreshold:
-					self.genomePlot.plot(x=dna_indices[thresholdMask], y=probs[k][thresholdMask], pen=None, symbolBrush=pg.intColor(i, hues), symbolPen='k')
+					self.genomePlot.plot(x=dna_indices[thresholdMask], y=probs[k][thresholdMask], pen=None, symbolBrush=color, symbolPen='k')
 				if showRegions:
 					x = np.array([a for r in regions[k] for a in r['dna_indices']]) + start
-					self.genomePlot.plot(x=x, y=[1.04+0.02*i]*len(x), connect='pairs', pen={'color':pg.intColor(i, hues), 'width':5})
+					self.genomePlot.plot(x=x, y=[1.04+0.02*i]*len(x), connect='pairs', pen={'color':color, 'width':5})
+				if showSequences:
+					for n in ['A', 'C', 'T', 'G']:
+						x = sequences[k]['dna_indices'][np.argwhere(sequences[k]['sequence'] == n)[:,0]]
+						self.genomePlot.plot(x=x, y=[-0.02-0.04*i]*len(x), pen=None, symbol=symbols[n], symbolPen=color, symbolBrush=color)
 			rna_indices = np.array(probs['indices']['rna_indices'][k])
 			self.rnaPlot.plot(x=rna_indices, y=probs[k], symbolBrush=pg.intColor(i, hues, alpha=alpha), name=k, pen=None, symbolPen=None)
 			if applyFilter:
-				self.rnaPlot.plot(x=rna_indices, y=filtered, pen=pg.intColor(i, hues))
+				self.rnaPlot.plot(x=rna_indices, y=filtered, pen=color)
 			if useThreshold:
-				self.rnaPlot.plot(x=rna_indices[thresholdMask], y=probs[k][thresholdMask], symbolBrush=pg.intColor(i, hues), pen=None, symbolPen='k')
+				self.rnaPlot.plot(x=rna_indices[thresholdMask], y=probs[k][thresholdMask], symbolBrush=color, pen=None, symbolPen='k')
 			if showRegions:
 				x = [a for r in regions[k] for a in r['rna_indices']]
-				self.rnaPlot.plot(x=x, y=[1.04+0.02*i]*len(x), connect='pairs', pen={'color':pg.intColor(i, hues), 'width':5})
+				self.rnaPlot.plot(x=x, y=[1.04+0.02*i]*len(x), connect='pairs', pen={'color':color, 'width':5})
+			if showSequences:
+				for n in ['A', 'C', 'G', 'T']:
+					x = np.argwhere(sequences[k]['sequence'] == n)[:,0]
+					self.rnaPlot.plot(x=x, y=[-0.02-0.04*i]*len(x), pen=None, symbol=symbols[n], symbolPen=color, symbolBrush=color )
 
 
 
