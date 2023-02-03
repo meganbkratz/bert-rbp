@@ -70,30 +70,30 @@ class FileLoader(pg.QtWidgets.QWidget):
 class NonscientificAxisItem(pg.AxisItem):
 	###Need an axis that doesn't convert big numbers to SI notation so that we can display DNA addresses on plots
 
-    def tickStrings(self, values, scale, spacing):
-        if self.logMode:
-            return self.logTickStrings(values, scale, spacing)
+	def tickStrings(self, values, scale, spacing):
+		if self.logMode:
+			return self.logTickStrings(values, scale, spacing)
 
-        places = max(0, np.ceil(-np.log10(spacing*scale)))
-        strings = []
-        for v in values:
-            vs = v * scale
-            vstr = ("%%0.%df" % places) % vs
-            strings.append(vstr)
-        return strings
+		places = max(0, np.ceil(-np.log10(spacing*scale)))
+		strings = []
+		for v in values:
+			vs = v * scale
+			vstr = ("%%0.%df" % places) % vs
+			strings.append(vstr)
+		return strings
 
 def besselFilter(data, cutoff, order=1, dt=None, btype='low', bidir=True):
-    """return data passed through bessel filter"""
+	"""return data passed through bessel filter"""
 
-    if dt is None:
-    	dt = 1.0
+	if dt is None:
+		dt = 1.0
 
-    b,a = scipy.signal.bessel(order, cutoff * dt, btype=btype) 
+	b,a = scipy.signal.bessel(order, cutoff * dt, btype=btype) 
 
-    if bidir:
-        d1 = scipy.signal.lfilter(b, a, scipy.signal.lfilter(b, a, data)[::-1])[::-1]
-    else:
-        d1 = scipy.signal.lfilter(b, a, data)
+	if bidir:
+		d1 = scipy.signal.lfilter(b, a, scipy.signal.lfilter(b, a, data)[::-1])[::-1]
+	else:
+		d1 = scipy.signal.lfilter(b, a, data)
 
     return d1
 
@@ -273,28 +273,28 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 
 
 	# def loadPerformanceData(self):
-	# 	try:
-	# 		if self.rbp is None:
-	# 			print("Could not load performance data, no RBP found.")
-	# 			return
+	#   try:
+	#       if self.rbp is None:
+	#           print("Could not load performance data, no RBP found.")
+	#           return
 
-	# 		filename = None
-	# 		if 'RBP_performance' in os.listdir(self.fileLoader.baseDir):
-	# 			filename = os.path.join(self.fileLoader.baseDir, 'RBP_performance', self.rbp+'_eval_performance.csv')
-	# 		if filename is None or not os.path.exists(filename):
-	# 			# try:
-	# 			# 	filename = os.path.join(config.rbp_performance_dir, self.rbp+'_eval_performance.csv')
-	# 			# except TypeError:
-	# 			# 	if config.rbp_performance_dir is None:
-	# 			# 		raise Exception("Please specify the rbp_performance_dir directory in your config.yaml file.")
-	# 			# 	raise
+	#       filename = None
+	#       if 'RBP_performance' in os.listdir(self.fileLoader.baseDir):
+	#           filename = os.path.join(self.fileLoader.baseDir, 'RBP_performance', self.rbp+'_eval_performance.csv')
+	#       if filename is None or not os.path.exists(filename):
+	#           # try:
+	#           #   filename = os.path.join(config.rbp_performance_dir, self.rbp+'_eval_performance.csv')
+	#           # except TypeError:
+	#           #   if config.rbp_performance_dir is None:
+	#           #       raise Exception("Please specify the rbp_performance_dir directory in your config.yaml file.")
+	#           #   raise
 
-	# 		if not os.path.exists(filename):
-	# 			print("Could not find perfomance data for {}. Looked here:{}".format(self.rbp, filename))
-	# 			return
-	# 		return np.genfromtxt(filename, delimiter=',', names=True, dtype=[float]+[int]*6)
-	# 	except:
-	# 		print("could not load performance data")
+	#       if not os.path.exists(filename):
+	#           print("Could not find perfomance data for {}. Looked here:{}".format(self.rbp, filename))
+	#           return
+	#       return np.genfromtxt(filename, delimiter=',', names=True, dtype=[float]+[int]*6)
+	#   except:
+	#       print("could not load performance data")
 
 
 	def loadPerformanceData(self):
