@@ -634,6 +634,10 @@ def motif_analysis(pos_seqs,
                       show_errorbars=False, color_scheme="color_custom",
                       symbols0="G", color0="orange", symbols1="A", color1="red",
                       symbols2="C", color2="blue", symbols3="TU", color3="green")
+
+            ### notes for fixing weblogo: 
+            #       1) make sure biopython is version 1.8 or greater (if you can't, edit the url in Bio/motifs/__init__.py ln506 to use https instead of http)
+            #       2) the website currently (Feb 2023) doesn't support exporting in formats other than .eps, so we get eps instead of png.
     
     return merged_motif_seqs
 
