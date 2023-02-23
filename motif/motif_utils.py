@@ -627,10 +627,10 @@ def motif_analysis(pos_seqs,
             # make weblogo
             seqs = [Seq(v) for i,v in enumerate(instances['seqs'])]
             #print("Seqs:", seqs)
-            m = motifs.create(seqs, alphabet='ACGTU')
+            m = motifs.create(seqs, alphabet='ACGU')
             
-            m.weblogo(os.path.join(save_file_dir, "motif_{:0=3}_{}_weblogo.png".format(len(instances['seq_idx']), motif)), 
-                      format='png_print', show_fineprint=False, show_ends=False, 
+            m.weblogo(os.path.join(save_file_dir, "motif_{:0=3}_{}_weblogo.eps".format(len(instances['seq_idx']), motif)), 
+                      format='eps', show_fineprint=False, show_ends=False, 
                       show_errorbars=False, color_scheme="color_custom",
                       symbols0="G", color0="orange", symbols1="A", color1="red",
                       symbols2="C", color2="blue", symbols3="TU", color3="green")
