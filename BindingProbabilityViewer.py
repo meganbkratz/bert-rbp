@@ -532,14 +532,14 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 				alpha = 100
 			if probs['indices'].get('dna_indices') is not None:
 				start = probs['indices'].get('metainfo', {}).get(k, {}).get('range_start', 0)
-				start = 0
+				#start = 0
 				dna_indices = np.array(probs['indices']['dna_indices'][k]) + start
 				self.genomePlot.plot(x=dna_indices, y=probs[k], symbolBrush=pg.intColor(i, hues, alpha=alpha), name=k, pen=None, symbolPen=None)
 				if applyFilter:
 					connect = np.ones(len(dna_indices))
 					breaks = np.argwhere(np.diff(dna_indices) > 10)[:,0]
 					connect[breaks] = 0
-					self.genomePlot.plot(x=dna_indices, y=filtered, pen='g', connect=connect, name='filtered')
+					self.genomePlot.plot(x=dna_indices, y=filtered, pen=color, connect=connect)
 				if useThreshold:
 					self.genomePlot.plot(x=dna_indices[thresholdMask], y=probs[k][thresholdMask], pen=None, symbolBrush=color, symbolPen='k')
 				if showRegions:
@@ -552,7 +552,7 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 			rna_indices = np.array(probs['indices']['rna_indices'][k])
 			self.rnaPlot.plot(x=rna_indices, y=probs[k], symbolBrush=pg.intColor(i, hues, alpha=alpha), name=k, pen=None, symbolPen=None)
 			if applyFilter:
-				self.rnaPlot.plot(x=rna_indices, y=filtered, pen='g', name='filtered')
+				self.rnaPlot.plot(x=rna_indices, y=filtered, pen=color)
 			if useThreshold:
 				self.rnaPlot.plot(x=rna_indices[thresholdMask], y=probs[k][thresholdMask], symbolBrush=color, pen=None, symbolPen='k')
 			if showRegions:
