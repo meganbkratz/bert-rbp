@@ -173,11 +173,11 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		self.fdrLabel = pg.QtWidgets.QLabel("")
 		self.lowestThresholdLabel = pg.QtWidgets.QLabel("")
 		self.highFScoreLabel=pg.QtWidgets.QLabel("")
-		#self.rocPlot = pg.PlotWidget(labels={'left':"True Positive Rate (TPR)", 'bottom':"False Positive Rate (FPR)"}, title="ROC")
-		self.rocPlot = pg.PlotWidget(labels={'bottom':"threshold"})
-		self.rocPlot.addLegend()
-		self.rocPlot.showGrid(True, True)
-		self.rocPlot.setMaximumSize(300,300)
+		#self.metricsPlot = pg.PlotWidget(labels={'left':"True Positive Rate (TPR)", 'bottom':"False Positive Rate (FPR)"}, title="ROC")
+		self.metricsPlot = pg.PlotWidget(labels={'bottom':"threshold"})
+		self.metricsPlot.addLegend()
+		self.metricsPlot.showGrid(True, True)
+		self.metricsPlot.setMaximumSize(300,300)
 		self.histogramPlot = pg.PlotWidget(labels={'left':'count', 'bottom':'model output'}, title='Control data histogram')
 		self.histogramPlot.addLegend()
 		self.histogramPlot.setMaximumSize(300,200)
@@ -200,7 +200,7 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		grid.addWidget(label5, 10,0)
 		grid.addWidget(self.highFScoreLabel,10,1)
 		#grid.addWidget(self.fdrLabel, 8,1,1,1)
-		grid.addWidget(self.rocPlot, 11,0,2,2)
+		grid.addWidget(self.metricsPlot, 11,0,2,2)
 		grid.addWidget(self.histogramPlot,13,0,2,2)
 		grid.setRowStretch(0,20)
 		#grid.setContentsMargins(1,1,1,1)
@@ -404,7 +404,7 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 
 
 	def plot_rbp_stats(self):
-		self.rocPlot.clear()
+		self.metricsPlot.clear()
 		self.histogramPlot.clear()
 		self.histogramPlot.addItem(self.thresholdLine)
 		if self.rbp_stats is None:
@@ -416,13 +416,13 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		#self.tpr = self.rbp_stats['true_positives']/(self.rbp_stats['true_positives']+self.rbp_stats['false_negatives'])
 		#self.fdr = self.rbp_stats['false_positives']/(self.rbp_stats['false_positives']+self.rbp_stats['true_positives'])
 
-		#self.rocPlot.plot(x=self.fpr, y=self.tpr, pen=None, symbol='o', symbolPen=None, symbolBrush='r')
-		self.rocPlot.plot(x=self.metrics['threshold'], y=self.metrics['precision'], pen='b', name='precision')
-		self.rocPlot.plot(x=self.metrics['threshold'], y=self.metrics['recall'], pen='c', name='recall')
-		self.rocPlot.plot(x=self.metrics['threshold'], y=self.metrics['F0.2_score'], pen='g', name='F0.2 score')
+		#self.metricsPlot.plot(x=self.fpr, y=self.tpr, pen=None, symbol='o', symbolPen=None, symbolBrush='r')
+		self.metricsPlot.plot(x=self.metrics['threshold'], y=self.metrics['precision'], pen='b', name='precision')
+		self.metricsPlot.plot(x=self.metrics['threshold'], y=self.metrics['recall'], pen='c', name='recall')
+		self.metricsPlot.plot(x=self.metrics['threshold'], y=self.metrics['F0.2_score'], pen='g', name='F0.2 score')
 
 		#i = np.argwhere(self.rbp_stats['threshold'] == self.thresholdSpin.value())[0]
-		#self.thresholdMarker = self.rocPlot.plot(x=self.fpr[i], y=self.tpr[i], pen=None, symbol='o', symbolPen=None, symbolBrush='k')
+		#self.thresholdMarker = self.metricsPlot.plot(x=self.fpr[i], y=self.tpr[i], pen=None, symbol='o', symbolPen=None, symbolBrush='k')
 
 
 		x = list(self.rbp_stats['threshold']) + [1.]
