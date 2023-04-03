@@ -6,8 +6,7 @@ import scipy.signal
 import config
 from region_analysis import find_binding_regions
 from Bio import SeqIO
-from util import parse_dna_range
-
+import util
 ## set plots to have white backgrounds
 pg.setConfigOption('background', 'w')
 pg.setConfigOption('foreground', 'k')
@@ -156,8 +155,8 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		self.thresholdSpin = pg.SpinBox(value=0.95, bounds=[0,0.99], minStep=0.01)
 		self.regionCheck = pg.QtWidgets.QCheckBox("Show regions - min length:")
 		self.regionSpin = pg.SpinBox(value=3, bounds=[1, None], int=True)
-		self.recallSpin = pg.SpinBox(value=0.2, bounds=[0,0.99], minStep=0.01)
-		self.precisionSpin = pg.SpinBox(value=0.95, bounds=[0,0.99], minStep=0.01)
+		self.recallSpin = pg.SpinBox(value=0.1, bounds=[0,0.99], minStep=0.01)
+		self.precisionSpin = pg.SpinBox(value=0.9, bounds=[0,0.99], minStep=0.01)
 		label1 = pg.QtWidgets.QLabel("Minimum Recall:")
 		label1.setAlignment(pg.QtCore.Qt.AlignRight)
 		label2 = pg.QtWidgets.QLabel("Minimum Precision:")
@@ -221,6 +220,8 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		self.thresholdCheck.stateChanged.connect(self.thresholdValueChanged)
 		self.regionCheck.stateChanged.connect(self.plot_probabilities)
 		self.regionSpin.sigValueChanged.connect(self.plot_probabilities)
+		self.precisionSpin.sigValueChanged.connect(self.calculate_thresholds)
+		self.recallSpin.sigValueChanged.connect(self.calculate_thresholds)
 
 		self.showBtn.clicked.connect(self.showAllSplices)
 		self.hideBtn.clicked.connect(self.hideAllSplices)
@@ -246,11 +247,13 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 				self.splices[k]=treeItem
 
 		self.rbp = self.parseRBP(filename=probability_file)
+		self.metricsPlot.setTitle(self.rbp)
 		self.model_type = self.parse_model_type(filename=probability_file)
 		self.probability_file = probability_file
 		self.metrics = None
 		self.rbp_stats = self.loadPerformanceData()
 		self.plot_rbp_stats()
+		self.calculate_thresholds()
 		self.sequences = None 
 
 		self.plot_probabilities()
@@ -273,7 +276,7 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 			rna = dna[mask]
 			indices = np.argwhere(mask)[:,0]
 
-			chromosome, start, end = parse_dna_range(splice.description)
+			chromosome, start, end = util.parse_dna_range(splice.description)
 			sequences[splice.id] = {'sequence':rna, 'dna_indices':indices+start}
 
 		self.sequences = sequences
@@ -410,7 +413,7 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		if self.rbp_stats is None:
 			return
 		if self.metrics is None:
-			self.metrics = self.calculate_metrics(self.rbp_stats)
+			self.metrics = util.calculate_precision_recall_fscore(self.rbp_stats)
 
 		#self.fpr = self.rbp_stats['false_positives']/(self.rbp_stats['false_positives']+self.rbp_stats['true_negatives'])
 		#self.tpr = self.rbp_stats['true_positives']/(self.rbp_stats['true_positives']+self.rbp_stats['false_negatives'])
@@ -430,30 +433,46 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		self.histogramPlot.plot(x=x, y=self.rbp_stats['neg_hist'], stepMode=True, pen='r', name='negatives')
 		self.thresholdValueChanged()
 
-	def calculate_metrics(self, stats):
-		data = np.zeros(100, dtype=[
-			('threshold', float),
-			('precision', float),
-			('recall', float),
-			#('F1_score', float),
-			#('F0.5_score', float),
-			('F0.2_score', float)
-			])
+	def calculate_thresholds(self):
+		if self.rbp_stats is None:
+			return
 
-		for i, x in enumerate(stats):
-			threshold, TP, FP, TN, FN, p, n = x
-			if ((TP + FP) == 0):
-				data[i]['threshold'] = -1
-				continue
-			data[i]['threshold'] = threshold
-			data[i]['precision'] = TP / (TP + FP)
-			data[i]['recall'] = TP / (TP + FN)
-			#data[i]['F1_score'] = (2*TP) / (2*TP + FP + FN)
-			#data[i]['F0.5_score'] = fscore(TP, FP, FN, b=0.5)
-			b=0.2
-			data[i]['F0.2_score'] = (1 + b**2) * TP / ((1+b**2)*TP + (b**2 * FN) + FP)
+		prec = self.precisionSpin.value()
+		recall = self.recallSpin.value()
+		lowest = util.get_threshold(self.rbp_stats, min_precision=prec, min_recall=recall, mode='lowest')
+		f_score = util.get_threshold(self.rbp_stats, min_precision=prec, min_recall=recall, mode='high_f0.2')
 
-		return data[data['threshold'] != -1]
+		if lowest == None:
+			self.lowestThresholdLabel.setText("None")
+			self.highFScoreLabel.setText("None")
+		else:
+			self.lowestThresholdLabel.setText("{}".format(lowest))
+			self.highFScoreLabel.setText("{}".format(f_score))
+
+	# def calculate_metrics(self, stats):
+	# 	data = np.zeros(100, dtype=[
+	# 		('threshold', float),
+	# 		('precision', float),
+	# 		('recall', float),
+	# 		#('F1_score', float),
+	# 		#('F0.5_score', float),
+	# 		('F0.2_score', float)
+	# 		])
+
+	# 	for i, x in enumerate(stats):
+	# 		threshold, TP, FP, TN, FN, p, n = x
+	# 		if ((TP + FP) == 0):
+	# 			data[i]['threshold'] = -1
+	# 			continue
+	# 		data[i]['threshold'] = threshold
+	# 		data[i]['precision'] = TP / (TP + FP)
+	# 		data[i]['recall'] = TP / (TP + FN)
+	# 		#data[i]['F1_score'] = (2*TP) / (2*TP + FP + FN)
+	# 		#data[i]['F0.5_score'] = fscore(TP, FP, FN, b=0.5)
+	# 		b=0.2
+	# 		data[i]['F0.2_score'] = (1 + b**2) * TP / ((1+b**2)*TP + (b**2 * FN) + FP)
+
+	# 	return data[data['threshold'] != -1]
 
 
 	def spliceTreeItemChanged(self, item, col):
