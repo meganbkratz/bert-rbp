@@ -126,6 +126,7 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 
 		self.plot_layout = pg.GraphicsLayout()
 		self.genomePlot = self.plot_layout.addPlot(labels={'left':('binding probability')}, axisItems={'bottom':NonscientificAxisItem('bottom', text='DNA nucleotide number')}, title='Genome-Aligned probabilities')
+		#self.genomePlot = self.plot_layout.addPlot(labels={'left':('binding probability')}, title='Genome-Aligned probabilities')
 		self.plot_layout.nextRow()
 		#self.sequencePlot = self.plot_layout.addPlot(axisItems={'bottom':NonscientificAxisItem('bottom', text='DNA nucleotide number')}, title="sequence")
 		self.rnaPlot = self.plot_layout.addPlot(labels={'left':'binding probability', 'bottom':'RNA nucleotide number'}, title='RNA-aligned probabilities')
@@ -155,16 +156,21 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		self.thresholdSpin = pg.SpinBox(value=0.95, bounds=[0,0.99], minStep=0.01)
 		self.regionCheck = pg.QtWidgets.QCheckBox("Show regions - min length:")
 		self.regionSpin = pg.SpinBox(value=3, bounds=[1, None], int=True)
-		label1 = pg.QtWidgets.QLabel("FPR:")
+		self.recallSpin = pg.SpinBox(value=0.2, bounds=[0,0.99], minStep=0.01)
+		self.precisionSpin = pg.SpinBox(value=0.95, bounds=[0,0.99], minStep=0.01)
+		label1 = pg.QtWidgets.QLabel("Minimum Recall:")
 		label1.setAlignment(pg.QtCore.Qt.AlignRight)
-		label2 = pg.QtWidgets.QLabel("TPR:")
+		label2 = pg.QtWidgets.QLabel("Minimum Precision:")
 		label2.setAlignment(pg.QtCore.Qt.AlignRight)
 		label3 = pg.QtWidgets.QLabel("False Discovery Rate:")
 		label3.setAlignment(pg.QtCore.Qt.AlignRight)
 		self.fprLabel = pg.QtWidgets.QLabel("")
 		self.tprLabel = pg.QtWidgets.QLabel("")
 		self.fdrLabel = pg.QtWidgets.QLabel("")
-		self.rocPlot = pg.PlotWidget(labels={'left':"True Positive Rate (TPR)", 'bottom':"False Positive Rate (FPR)"}, title="ROC")
+		#self.rocPlot = pg.PlotWidget(labels={'left':"True Positive Rate (TPR)", 'bottom':"False Positive Rate (FPR)"}, title="ROC")
+		self.rocPlot = pg.PlotWidget(labels={'bottom':"threshold"})
+		self.rocPlot.addLegend()
+		self.rocPlot.showGrid(True, True)
 		self.rocPlot.setMaximumSize(300,300)
 		self.histogramPlot = pg.PlotWidget(labels={'left':'count', 'bottom':'model output'}, title='Control data histogram')
 		self.histogramPlot.addLegend()
@@ -179,13 +185,13 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		grid.addWidget(self.regionCheck, 5,0,1,1)
 		grid.addWidget(self.regionSpin, 5,1,1,1)
 		grid.addWidget(label1, 6,0,1,1)
-		grid.addWidget(self.fprLabel, 6,1,1,1)
+		grid.addWidget(self.recallSpin, 6,1,1,1)
 		grid.addWidget(label2, 7,0,1,1)
-		grid.addWidget(self.tprLabel, 7,1,1,1)
-		grid.addWidget(label3, 8,0,1,1)
-		grid.addWidget(self.fdrLabel, 8,1,1,1)
-		grid.addWidget(self.rocPlot, 9,0,2,2)
-		grid.addWidget(self.histogramPlot,11,0,2,2)
+		grid.addWidget(self.precisionSpin, 7,1,1,1)
+		#grid.addWidget(label3, 8,0,1,1)
+		#grid.addWidget(self.fdrLabel, 8,1,1,1)
+		grid.addWidget(self.rocPlot, 8,0,2,2)
+		grid.addWidget(self.histogramPlot,10,0,2,2)
 		grid.setRowStretch(0,10)
 
 		self.h_splitter = pg.QtWidgets.QSplitter(pg.QtCore.Qt.Horizontal)
@@ -230,6 +236,7 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		self.rbp = self.parseRBP(filename=probability_file)
 		self.model_type = self.parse_model_type(filename=probability_file)
 		self.probability_file = probability_file
+		self.metrics = None
 		self.rbp_stats = self.loadPerformanceData()
 		self.plot_rbp_stats()
 		self.sequences = None 
@@ -237,8 +244,8 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		self.plot_probabilities()
 
 	def load_sequence(self):
-		if self.sequences is not None:
-			return self.sequences
+		#if self.sequences is not None:
+		#	return self.sequences
 		fasta = self.find_fasta_file(self.probability_file)
 		if fasta is None:
 			self.sequences = {}
@@ -390,21 +397,52 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		self.histogramPlot.addItem(self.thresholdLine)
 		if self.rbp_stats is None:
 			return
+		if self.metrics is None:
+			self.metrics = self.calculate_metrics(self.rbp_stats)
 
-		self.fpr = self.rbp_stats['false_positives']/(self.rbp_stats['false_positives']+self.rbp_stats['true_negatives'])
-		self.tpr = self.rbp_stats['true_positives']/(self.rbp_stats['true_positives']+self.rbp_stats['false_negatives'])
-		self.fdr = self.rbp_stats['false_positives']/(self.rbp_stats['false_positives']+self.rbp_stats['true_positives'])
+		#self.fpr = self.rbp_stats['false_positives']/(self.rbp_stats['false_positives']+self.rbp_stats['true_negatives'])
+		#self.tpr = self.rbp_stats['true_positives']/(self.rbp_stats['true_positives']+self.rbp_stats['false_negatives'])
+		#self.fdr = self.rbp_stats['false_positives']/(self.rbp_stats['false_positives']+self.rbp_stats['true_positives'])
 
-		self.rocPlot.plot(x=self.fpr, y=self.tpr, pen=None, symbol='o', symbolPen=None, symbolBrush='r')
+		#self.rocPlot.plot(x=self.fpr, y=self.tpr, pen=None, symbol='o', symbolPen=None, symbolBrush='r')
+		self.rocPlot.plot(x=self.metrics['threshold'], y=self.metrics['precision'], pen='b', name='precision')
+		self.rocPlot.plot(x=self.metrics['threshold'], y=self.metrics['recall'], pen='c', name='recall')
+		self.rocPlot.plot(x=self.metrics['threshold'], y=self.metrics['F0.2_score'], pen='g', name='F0.2 score')
 
-		i = np.argwhere(self.rbp_stats['threshold'] == self.thresholdSpin.value())[0]
-		self.thresholdMarker = self.rocPlot.plot(x=self.fpr[i], y=self.tpr[i], pen=None, symbol='o', symbolPen=None, symbolBrush='k')
+		#i = np.argwhere(self.rbp_stats['threshold'] == self.thresholdSpin.value())[0]
+		#self.thresholdMarker = self.rocPlot.plot(x=self.fpr[i], y=self.tpr[i], pen=None, symbol='o', symbolPen=None, symbolBrush='k')
 
 
 		x = list(self.rbp_stats['threshold']) + [1.]
 		self.histogramPlot.plot(x=x, y=self.rbp_stats['pos_hist'], stepMode=True, pen='b', name='positives')
 		self.histogramPlot.plot(x=x, y=self.rbp_stats['neg_hist'], stepMode=True, pen='r', name='negatives')
 		self.thresholdValueChanged()
+
+	def calculate_metrics(self, stats):
+		data = np.zeros(100, dtype=[
+			('threshold', float),
+			('precision', float),
+			('recall', float),
+			#('F1_score', float),
+			#('F0.5_score', float),
+			('F0.2_score', float)
+			])
+
+		for i, x in enumerate(stats):
+			threshold, TP, FP, TN, FN, p, n = x
+			if ((TP + FP) == 0):
+				data[i]['threshold'] = -1
+				continue
+			data[i]['threshold'] = threshold
+			data[i]['precision'] = TP / (TP + FP)
+			data[i]['recall'] = TP / (TP + FN)
+			#data[i]['F1_score'] = (2*TP) / (2*TP + FP + FN)
+			#data[i]['F0.5_score'] = fscore(TP, FP, FN, b=0.5)
+			b=0.2
+			data[i]['F0.2_score'] = (1 + b**2) * TP / ((1+b**2)*TP + (b**2 * FN) + FP)
+
+		return data[data['threshold'] != -1]
+
 
 	def spliceTreeItemChanged(self, item, col):
 		if col == 0:
@@ -416,10 +454,10 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		value = self.thresholdSpin.value()
 
 		i = np.argwhere(self.rbp_stats['threshold'] == value)[0]
-		self.thresholdMarker.setData(x=self.fpr[i], y=self.tpr[i])
-		self.fprLabel.setText("%.6f"%self.fpr[i])
-		self.tprLabel.setText("%.6f"%self.tpr[i])
-		self.fdrLabel.setText("%.6f"%self.fdr[i])
+		#self.thresholdMarker.setData(x=self.fpr[i], y=self.tpr[i])
+		#self.fprLabel.setText("%.6f"%self.fpr[i])
+		#self.tprLabel.setText("%.6f"%self.tpr[i])
+		#self.fdrLabel.setText("%.6f"%self.fdr[i])
 		self.thresholdLine.setPos(value)
 
 		self.plot_probabilities()
@@ -437,7 +475,7 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 
 		applyFilter=True ## todo: make this a gui option
 		showRegions=self.regionCheck.isChecked()
-		showSequences=True
+		showSequences=False
 		if showSequences:
 			symbols={
 				'A':createSymbol('A'),
@@ -463,13 +501,14 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 				alpha = 100
 			if probs['indices'].get('dna_indices') is not None:
 				start = probs['indices'].get('metainfo', {}).get(k, {}).get('range_start', 0)
+				start = 0
 				dna_indices = np.array(probs['indices']['dna_indices'][k]) + start
 				self.genomePlot.plot(x=dna_indices, y=probs[k], symbolBrush=pg.intColor(i, hues, alpha=alpha), name=k, pen=None, symbolPen=None)
 				if applyFilter:
 					connect = np.ones(len(dna_indices))
 					breaks = np.argwhere(np.diff(dna_indices) > 10)[:,0]
 					connect[breaks] = 0
-					self.genomePlot.plot(x=dna_indices, y=filtered, pen=color, connect=connect)
+					self.genomePlot.plot(x=dna_indices, y=filtered, pen='g', connect=connect, name='filtered')
 				if useThreshold:
 					self.genomePlot.plot(x=dna_indices[thresholdMask], y=probs[k][thresholdMask], pen=None, symbolBrush=color, symbolPen='k')
 				if showRegions:
@@ -482,7 +521,7 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 			rna_indices = np.array(probs['indices']['rna_indices'][k])
 			self.rnaPlot.plot(x=rna_indices, y=probs[k], symbolBrush=pg.intColor(i, hues, alpha=alpha), name=k, pen=None, symbolPen=None)
 			if applyFilter:
-				self.rnaPlot.plot(x=rna_indices, y=filtered, pen=color)
+				self.rnaPlot.plot(x=rna_indices, y=filtered, pen='g', name='filtered')
 			if useThreshold:
 				self.rnaPlot.plot(x=rna_indices[thresholdMask], y=probs[k][thresholdMask], symbolBrush=color, pen=None, symbolPen='k')
 			if showRegions:
