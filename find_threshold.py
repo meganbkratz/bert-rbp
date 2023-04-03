@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import pyqtgraph as pg
+from util import calculate_precision_recall_fscore
 
 pg.setConfigOption('background', 'w')
 pg.setConfigOption('foreground', 'k')
@@ -29,33 +30,6 @@ pg.setConfigOption('foreground', 'k')
 def load_performance_data(filename):
 	stats = np.genfromtxt(filename, delimiter=',', names=True, dtype=[float]+[int]*6)
 	return stats
-
-def fscore(TP, FP, FN, b=1):
-	return (1 + b**2) * TP / ((1+b**2)*TP + (b**2 * FN) + FP)
-
-def calculate_metrics(stats):
-	data = np.zeros(100, dtype=[
-		('threshold', float),
-		('precision', float),
-		('recall', float),
-		('F1_score', float),
-		('F0.5_score', float),
-		('F0.2_score', float)
-		])
-
-	for i, x in enumerate(stats):
-		threshold, TP, FP, TN, FN, p, n = x
-		if ((TP + FP) == 0):
-			data[i]['precision'] = np.nan
-		else:
-			data[i]['precision'] = TP / (TP + FP)
-		data[i]['threshold'] = threshold
-		data[i]['recall'] = TP / (TP + FN)
-		data[i]['F1_score'] = (2*TP) / (2*TP + FP + FN)
-		data[i]['F0.5_score'] = fscore(TP, FP, FN, b=0.5)
-		data[i]['F0.2_score'] = fscore(TP, FP, FN, b=0.2)
-
-	return data
 
 def summary(metrics, min_precision=0.95, min_recall=0.2):
 	F_max = np.argwhere(metrics['F0.2_score'] == metrics['F0.2_score'].max())
@@ -136,7 +110,7 @@ if __name__ == '__main__':
 		stats = load_performance_data(os.path.join(performance_dir, f))
 		#stats = load_performance_data(f)
 		rbp = f.split('_')[0]
-		m = calculate_metrics(stats)
+		m = calculate_precision_recall_fscore(stats)
 		metrics[rbp] = {'metrics': m}
 
 	stringencies = [(0.95, 0.2), (0.95, 0.1), (0.9, 0.2), (0.9, 0.1), (0.85, 0.2), (0.85, .1), (0.8, 0.2), (0.8, 0.1)]
