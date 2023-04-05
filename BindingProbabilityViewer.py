@@ -39,7 +39,8 @@ class FileLoader(pg.QtWidgets.QWidget):
 	def baseDirBtnClicked(self):
 		baseDir = self.baseDir if self.baseDir is not None else ""
 		newBaseDir = pg.FileDialog.getExistingDirectory(self, caption="Select base directory...", directory=baseDir)
-		self.setBaseDir(newBaseDir)
+		if os.exists(newBaseDir):
+			self.setBaseDir(newBaseDir)
 
 	def setBaseDir(self, baseDir):
 		self.baseDir = baseDir
