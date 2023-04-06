@@ -48,7 +48,10 @@ def find_binding_regions(probs, threshold=0.95, n_contiguous=3):
         for site in sites:
             d={}
             d['indices'] = site
-            d['dna_indices'] = (probs['indices']['dna_indices'][k][site[0]], probs['indices']['dna_indices'][k][site[1]])
+            try:
+                d['dna_indices'] = (probs['indices']['dna_indices'][k][site[0]], probs['indices']['dna_indices'][k][site[1]])
+            except KeyError:
+                d['dna_indices'] = None
             d['rna_indices'] = (probs['indices']['rna_indices'][k][site[0]], probs['indices']['rna_indices'][k][site[1]])
             d['mean_probability'] = probs[k][site[0]:site[1]+1].mean()
             d['region_length'] = (site[1]+1)-site[0]
