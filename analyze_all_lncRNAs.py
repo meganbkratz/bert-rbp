@@ -23,34 +23,7 @@ from collections import OrderedDict
 import util, region_analysis
 import numpy as np
 
-def load_splice(splice, tokenizer, n_kmer=3): ### this function is slow - todo: optimize
-	MAX_LENGTH = 101
-	spacing = 10
-
-	examples=[]
-	indices=[]
-	i = 0
-	while i <= len(splice.seq)-MAX_LENGTH:
-		kmer_sequence = seq2kmer(str(splice.seq[i:i+MAX_LENGTH].upper()), n_kmer).replace('U', 'T')
-		examples.append(InputExample(splice.id+'_%i'%i, text_a=kmer_sequence, label='0')) 
-		indices.append(i+int(MAX_LENGTH/2))
-		i += 10
-
-	features = convert_examples_to_features(
-			examples,
-			tokenizer,
-			label_list=["0", "1"],
-			max_length=MAX_LENGTH,
-			output_mode="classification",
-			pad_token=tokenizer.convert_tokens_to_ids([tokenizer.pad_token])[0],
-			)
-
-	# Convert to Tensors and build dataset
-	all_input_ids = torch.tensor([f.input_ids for f in features], dtype=torch.long)
-
-	return {splice.id:all_input_ids, 'indices':{'rna_indices':{splice.id:indices}}}
-
-def load_splice2(splice, tokenizer, n_kmer=3):
+def load_splice(splice, tokenizer, n_kmer=3):
 	max_length = 101
 	spacing = 10
 
@@ -88,8 +61,6 @@ def predict(dataset, model):
 	softmax = torch.nn.Softmax(dim=1)
 
 	results = OrderedDict()
-
-	print('added pin_memory=True')
 
 	for name, data in dataset.items():
 		if name in ['indices']:
@@ -135,11 +106,18 @@ if __name__ == '__main__':
 
 	args = parser.parse_args()
 
+	print("""Optimizations:
+				loading:
+					-- using seq2kmer_aslist function
+			    predicting:
+			    	-- using pin_memory=True
+		""")
+
 	tokenizer = DNATokenizer.from_pretrained(args.model_path)
 	model = BertForSequenceClassification.from_pretrained(args.model_path)
 
 	model_stats = util.load_performance_data(os.path.join(args.model_path, args.RBP+"_eval_performance.csv"))
-	threshold = util.get_threshold(model_stats, min_precision=0.9, min_recall=0.1, mode='lowest')
+	threshold = util.get_threshold(model_stats, min_precision=0.9, min_recall=0.1, mode='high_f0.2')
 	n_contiguous = 3
 
 	summary_file = os.path.join(args.save_dir, args.RBP+"_binding_regions_summary.csv")
@@ -154,7 +132,7 @@ if __name__ == '__main__':
 		f.write("RBP, Splice, Splice_index, model_type, threshold, n_contiguous, mean_binding_probability, rna_coordinates, region_length \n")
 
 	for i, splice in enumerate(SeqIO.parse(args.sequence_path, 'fasta')):
-		dataset = load_splice2(splice, tokenizer, args.kmer)
+		dataset = load_splice(splice, tokenizer, args.kmer)
 		probs = predict(dataset, model)
 		regions = region_analysis.find_binding_regions(probs, threshold=threshold, n_contiguous=n_contiguous)
 
