@@ -34,12 +34,14 @@ class FileLoader(pg.QtWidgets.QWidget):
 		if baseDir is not None:
 			if not os.path.isdir(baseDir) and os.path.isfile(baseDir):
 				baseDir = os.path.dirname(baseDir)
+			if os.path.basename(baseDir) == "" and baseDir[-1] == "/":
+				baseDir = baseDir[:-1]
 			self.setBaseDir(baseDir)
 
 	def baseDirBtnClicked(self):
 		baseDir = self.baseDir if self.baseDir is not None else ""
 		newBaseDir = pg.FileDialog.getExistingDirectory(self, caption="Select base directory...", directory=baseDir)
-		if os.exists(newBaseDir):
+		if os.path.exists(newBaseDir):
 			self.setBaseDir(newBaseDir)
 
 	def setBaseDir(self, baseDir):
@@ -65,6 +67,13 @@ class FileLoader(pg.QtWidgets.QWidget):
 			root.addChild(item)
 			for f in sorted(os.listdir(path)):
 				self.addFileItem(os.path.join(path,f), item)
+		elif os.path.islink(path):
+			item = pg.QtWidgets.QTreeWidgetItem(root, [os.path.basename(path)])
+			item.path = os.path.abspath(path)
+			if not os.path.exists(path):
+				item.setDisabled(True)
+			root.addChild(item)
+
 		else:
 			raise Exception("Why are we here?")
 
@@ -395,7 +404,7 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		if filename is None or not os.path.exists(filename):
 			performance_dir = config.rbp_performance_dir
 			if performance_dir is None:
-				print("Could not find performance directory in either fileloader base directory or in config. Please specify the rbp_performance_dir directory in your config.yaml file.")
+				print("Could not find performance directory in either fileloader base directory ({base_dir}) or in config. Please specify the rbp_performance_dir directory in your config.yaml file.".format(base_dir=self.fileLoader.baseDir))
 				return
 			filename = os.path.join(config.rbp_performance_dir, self.model_type, self.rbp+'_eval_performance.csv')
 			if not os.path.exists(filename):
