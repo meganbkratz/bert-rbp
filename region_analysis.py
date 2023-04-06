@@ -31,7 +31,7 @@ def find_contiguous_sites(probs, threshold=0.95, n_contiguous=3):
                     regions.append((start, i-1))
                 start = None
 
-    if start is not None: ## make sure to add the last region if we end on it
+    if start is not None and (i-start >= n_contiguous): ## make sure to add the last region if we end on it
         regions.append((start, i))
 
     return regions
