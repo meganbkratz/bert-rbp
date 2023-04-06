@@ -38,6 +38,10 @@ def seq2kmer(seq, k):
     kmers = " ".join(kmer)
     return kmers
 
+def seq2kmer_aslist(seq, k):
+    kmers = [seq[x:x+k] for x in range(len(seq)+1-k)]
+    return kmers
+
 def contiguous_regions(condition, len_thres=5, len_thres2=9):
     """
     Modified from and credit to: https://stackoverflow.com/a/4495197/3751373
