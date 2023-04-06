@@ -56,14 +56,14 @@ MAX_LENGTH = 101
 
 def load_fasta_sequences(f, tokenizer, n_kmer):
     """Given a FASTA file with one or more splices, return a Tensor Dataset for each splice"""
-
-    splices = [x for x in SeqIO.parse(f, 'fasta')]
-
+    #splices = [x for x in SeqIO.parse(f, 'fasta')]
+    #print('    {} splices'.format(len(splices)))
     global MAX_LENGTH
 
     datasets = OrderedDict()
     dataset_indices = {'rna_indices':{}}
-    for splice in splices:
+    for splice in SeqIO.parse(f, 'fasta'):
+    #for n, splice in enumerate(splices):
         examples=[]
         indices=[]
         i = 0
@@ -96,18 +96,18 @@ def load_fasta_sequences(f, tokenizer, n_kmer):
         datasets[splice.id] = all_input_ids
         dataset_indices['rna_indices'][splice.id] = indices
         #datasets[splice.id] = TensorDataset(all_input_ids, all_attention_mask, all_token_type_ids, all_labels)
-
     datasets['indices'] = dataset_indices
     return datasets
 
 def load_fasta_genome(filename, tokenizer, n_kmer):
-    splices = [x for x in SeqIO.parse(filename, 'fasta')]
+    #splices = [x for x in SeqIO.parse(filename, 'fasta')]
+    #print('    {} splices'.format(len(splices)))
 
     global MAX_LENGTH
 
     datasets = OrderedDict()
     dataset_indices = {'dna_indices':{}, 'rna_indices':{}, 'metainfo':{}}
-    for splice in splices:
+    for splice in SeqIO.parse(filename, 'fasta'):
         examples = []
         dna_indices = []
         rna_indices = []
