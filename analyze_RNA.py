@@ -16,54 +16,16 @@ try:
 except ImportError:
     HAVE_PYQTGRAPH = False
 
-#pg.dbg()
-
-
-#### notes
-#tensor.to() - move a tensor from cpu (default) to gpu
-#output_mode is always classification
-
-
-
-##### Map:
-# - load data, split it into kmers, load into a tensor
-# - load model
-# - send data and model to gpu -- .to()
-# - output = model(input)  <- run data through model
-# - do softmax on output to get probablility?
-# - return probability?
-
 MAX_LENGTH = 101
-
-#sequence_file='/home/megan/work/lnc_rna/data/sequences/OIP5-AS1_sequences.fasta'
-#pos_test_file='/home/megan/work/lnc_rna/data/sequences/TIAL1_pos.fa'
-#neg_test_file='/home/megan/work/lnc_rna/data/sequences/TIAL1_neg.fa'
-#pos_test_file='/home/megan/work/lnc_rna/code/bert-rbp/RBP_training_data/TIAL1.positive.fa'
-#neg_test_file='/home/megan/work/lnc_rna/code/bert-rbp/RBP_training_data/TIAL1.negative.fa'
-#nontrain_tsv_file='/proj/magnuslb/users/mkratz/bert-rbp/datasets/TIAL1/nontraining_sample_finetune/dev.tsv'
-#train_tsv_file='/proj/magnuslb/users/mkratz/bert-rbp/datasets/TIAL1/training_sample_finetune/dev.tsv'
-#nontrain_tsv_file='/home/megan/work/lnc_rna/code/bert-rbp/datasets/TIAL1/nontraining_sample_finetune/dev.tsv'
-
-
-
-
-#model_path = "/home/megan/work/lnc_rna/code/bert-rbp/datasets/TIAL1/finetuned_model"
-#model_path = "/proj/magnuslb/users/mkratz/bert-rbp/datasets/TIAL1/finetuned_model"
-#tokenizer = DNATokenizer.from_pretrained(model_path)
-
-
 
 
 def load_fasta_sequences(f, tokenizer, n_kmer):
     """Given a FASTA file with one or more splices, return a Tensor Dataset for each splice"""
-    #splices = [x for x in SeqIO.parse(f, 'fasta')]
-    #print('    {} splices'.format(len(splices)))
     global MAX_LENGTH
 
     datasets = OrderedDict()
     dataset_indices = {'rna_indices':{}}
     for splice in SeqIO.parse(f, 'fasta'):
-    #for n, splice in enumerate(splices):
         examples=[]
         indices=[]
         i = 0
@@ -84,25 +46,13 @@ def load_fasta_sequences(f, tokenizer, n_kmer):
 
         # Convert to Tensors and build dataset
         all_input_ids = torch.tensor([f.input_ids for f in features], dtype=torch.long)
-        #all_attention_mask = torch.tensor([f.attention_mask for f in features], dtype=torch.long)
-        #all_token_type_ids = torch.tensor([f.token_type_ids for f in features], dtype=torch.long)
-        #all_labels = torch.tensor([f.label for f in features], dtype=torch.long)
-
-        ### for using the model to predict, we only need the input_ids
-        ## -- input_ids is a tensor or shape(batch_size, sequence_length) and it's indicies of tokens in the vocabulary (ie [2,54,18,etc])
-        ## -- attention_mask is for if we use padding tokens - 1 is not masked, 0 is masked
-        ## -- so a questions is if our the attention mask and token ids here are necessary
 
         datasets[splice.id] = all_input_ids
         dataset_indices['rna_indices'][splice.id] = indices
-        #datasets[splice.id] = TensorDataset(all_input_ids, all_attention_mask, all_token_type_ids, all_labels)
     datasets['indices'] = dataset_indices
     return datasets
 
 def load_fasta_genome(filename, tokenizer, n_kmer):
-    #splices = [x for x in SeqIO.parse(filename, 'fasta')]
-    #print('    {} splices'.format(len(splices)))
-
     global MAX_LENGTH
 
     datasets = OrderedDict()
@@ -227,86 +177,6 @@ def predict(dataset, model_path):
     results['indices'] = dataset.get('indices') ## just pass these through here
     return results
 
-# def plot_test_probabilities(dataset, label="", rna='example_set'):
-#     """Creates a plot of probability of binding (model output), for several 101 nucleotide controls and a longer segment made of those controls concatenated together."""
-#     concatenated = dataset.get('concatenated', dataset.get('concatenated_neg'))
-
-#     dataset.pop('genomic_indices')
-#     x = np.arange(0, concatenated.shape[0]) * 10 + 50 ## *10 because we roll a new segment to test every 10 nucleotides, and + 50 to center on the middle of the RNA
-#     keys = list(dataset.keys())[:-1] ## take off the concatenated key
-
-#     p = pg.plot()
-#     p.setLabel('bottom', 'nucleotide number')
-#     p.setLabel('left', 'model output')
-#     p.setTitle("%s %s model output"%(label, rna))
-#     p.showGrid(True, True)
-#     p.addLegend()
-#     p.plot(x=x, y=concatenated, pen=None, symbol='o', symbolBrush=(255,255,255,100), name='concatenated sample')
-
-#     x = [100*i+50 for i, k in enumerate(keys)]
-#     data = [dataset[k][0] for k in keys]
-#     p.plot(x, data, symbol='o', pen=None, name='individual samples')
-#     for i,k in enumerate(keys):
-#         x = 100*i + 50
-#         p.plot(x=[x], y=dataset[k], symbol='o')
-
-#     return p
-
-# def plot_probabilities(dataset, label="", rna='', index_mode=None):
-#     if mode not in ['rna', 'dna']:
-#         raise Exception("please use the index_mode argument to choose x-axis mode. options are 'rna' or 'dna'")
-#     if mode == 'dna' and dataset.get('indices', {}).get('dna_indices') is None:
-#         raise Exception('DNA indices are not present in dataset')
-#     p = pg.plot()
-#     p.setLabel('bottom', 'nucleotide')
-#     p.setLabel('left', 'model output')
-#     p.addLegend()
-#     p.showGrid(True,True)
-#     p.setTitle("%s %s binding probabilities"%(label, rna))
-#     pens = ['r','g','b','m','c','w','y']
-
-#     keys = list(dataset.keys())
-#     if mode == 'dna':
-#         indices = dataset['indices']['dna_indices']
-#     elif dataset.get('indices', {}).get('rna_indices') is not None:
-#         indices = dataset['indices']['rna_indices']
-#     else:
-#         indices = None
-
-#     for i, k in enumerate(keys):
-#         if k in 'indices':
-#             continue
-#         if indices == None:
-#             x = np.arange(0, dataset[k].shape[0]) * 10 + 50 ## *10 because we roll a new segment to test every 10 nucleotides, and + 50 to center on the middle of the RNA
-#         else:
-#             x = indices[k]
-#         p.plot(x=x, y=dataset[k], pen=None, symbol='o', symbolBrush=pens[i%len(pens)], symbolPen=None, name=k)
-
-#     return p
-
-# def plot_nontraining_data(dataset, label="", rna=None):
-#     ## plot histograms
-#     p = pg.plot()
-#     p.setTitle("%s model output distribution for known samples" % label)
-#     p.setLabel('bottom', 'output')
-#     p.setLabel('left', 'count')
-#     p.addLegend()
-#     p.showGrid(True,True)
-#     pos, x = np.histogram(dataset['positives'], bins=100, range=[0,1])
-#     neg, x = np.histogram(dataset['negatives'], bins=100, range=[0,1])
-#     p.plot(x, pos, stepMode=True, pen='b', name='binding')
-#     p.plot(x, neg, stepMode=True, pen='r', name='non-binding')
-#     return p
-
-# def plot(probs, label=None, rna=''):
-#     if 'positives' in probs.keys():
-#         return plot_nontraining_data(probs, label=label, rna=rna)
-#     elif 'concatenated' in probs.keys():
-#         return plot_test_probabilities(probs, label=label, rna=rna)
-#     else:
-#         return plot_probabilities(probs, label, rna=rna)
-
-
 def save_probabilities(probs, file_name):
     print("Saving model output in %s"%file_name)
     import pickle
@@ -321,71 +191,19 @@ def load_probabilities(file_name, quiet=False):
         probs = pickle.load(f)
     return probs
 
-#pos_data = load_sequences(pos_test_file)
-#neg_data = load_sequences(neg_test_file)
-#oip_data = load_sequences(sequence_file)
-
-#pos = predict(pos_data, model_path)
-#neg = predict(neg_data, model_path)
-#oip = predict(oip_data, model_path)
-
-#p_pos = plot_test_probabilities(pos, label="positive test set")
-#p_neg = plot_test_probabilities(neg, label="negative test set")
-#oip_plot = plot_probablities(oip, label="OIP5-AS1_splice")
-
-#dataset = load_tsv_sequences(nontrain_tsv_file)
-#training_dataset = load_tsv_sequences(train_tsv_file)
-#probs = predict(dataset, model_path)
-#training_probs = predict(training_dataset, model_path)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
-    #arguments:
-    #  - RBP - required I think
-    #  - RNA sequences file -- might be able to guess or have a default be the non-training data for the RBP
-    #  - save - whether to save the results to be plotted later
-    #  - plot - whether to try to plot now
-
     parser.add_argument("RBP", type=str, help="The name of the RNA binding protien (RBP) to use.")
-    #parser.add_argument("--genome", action="store_true", help="if True, the supplied sequence file is a genomic file rather than just RNA")
     parser.add_argument("--sequence_path", default=None, type=str, required=False, help="(optional) The path to the sequence file to use. If not specified, the non-training data for the RBP will be used")
-    #parser.add_argument("--save", action="store_true", help="(optional) if true, save binding probabilities as .pk (pickle) files")
-    #parser.add_argument("--plot", action="store_true", help="(optional) if true, create plots of probabilites")
-    #parser.add_argument("--run_new_prediction", action="store_true", help="(optional) If true, run a new set of predictions, else only run predictions if we don't find saved ones")
-    #parser.add_argument("--plot_only", action="store_true", help="(optional) if true, load a previously saved set of outputs and create plots, requires --probability_path")
-    #parser.add_argument("--probability_path", default=None, type=str, help="(optional) path to a previously saved model output file (required if --plot_only is True")
     parser.add_argument("--model_path", default=None, type=str, required=True, help="The path to the model to use")
     parser.add_argument("--save_path", default=None, type=str, required=True, help="Where to save the output data.")
     parser.add_argument("--kmer", type=int, default=3)
 
     args = parser.parse_args()
 
-    # if args.plot_only:
-    #     if args.probability_path is None:
-    #         raise Exception("No --probability_path specified. Please specify the path to the probability file to use at runtime")
-    #     import pyqtgraph as pg
-    #     probs = load_probabilities(args.probability_path)
-    #     p = plot(probs, label=args.RBP)
-    #     quit()
-
-    #############################################################
-    # Everything below only happens if --plot_only is not True  #
-    #############################################################
-
-    ### Make sure we have a path to RBP
-
-    # if config.dataset_directory is None:
-    #     raise Exception('No dataset_directory specified in config.yml. Please fill in the path to the RBP datasets directory')
-    # dataset_path = os.path.normpath(config.dataset_directory)
-
-    # if args.RBP is None:
-    #     raise Exception('No RBP specified. Options are: %s' %str(os.listdir(dataset_path)))
-    # elif args.RBP not in os.listdir(dataset_path):
-    #     raise Exception("No data available for %s. Options are: %s" %(args.RBP, str(os.listdir(dataset_path))))
-
     ### make sure we have a trained model
-    #model_path = os.path.join(dataset_path, args.RBP, 'model_to_use')
     model_path = args.model_path
     if not os.path.exists(model_path):
         raise Exception('Could not find model at "%s".' % model_path)
@@ -400,15 +218,8 @@ if __name__ == '__main__':
     if not os.path.exists(sequence_path):
         raise Exception('Could not find sequence data at "%s". Path does not exist.' %sequence_path)
 
-    ## check if a saved probability file exists, ask if we want to use it
-    #save_file = sequence_path.split('.', 1)[0] + "_%s_bertrbp_output.pk"%args.RBP
-    #if os.path.exists(save_file) and not args.run_new_prediction:
-    #    probs = load_probabilities(save_file)
-    #else:
     tokenizer=DNATokenizer.from_pretrained(model_path) ## need the tokenizer to load the sequences
-    # if args.genome:
-    #     print("Loading genomic sequence data from %s" %sequence_path)
-    #     dataset= load_fasta_genome(sequence_path, tokenizer, args.kmer)
+
     if sequence_path[-3:] == '.fa' or sequence_path[-6:] == '.fasta':
         try:
             dataset= load_fasta_genome(sequence_path, tokenizer, args.kmer)
@@ -427,15 +238,3 @@ if __name__ == '__main__':
 
     save_file = args.save_path
     save_probabilities(probs, save_file)
-
-    #if args.plot:
-    #    import pyqtgraph as pg
-    #    p = plot(probs, label=args.RBP)
-
-
-#### refactor goals:
-#   - remove plotting
-#   - command line specification for which model to use
-#   - default is genome
-#   - default is saving
-#   - default is running a new prediction
