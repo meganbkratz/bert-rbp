@@ -3,6 +3,7 @@
 import os
 import pandas as pd
 import numpy as np
+import scipy
 
 def kmer2seq(kmers):
     """
@@ -382,6 +383,109 @@ def merge_motifs(motif_seqs, min_len=5, align_all_ties=True, **kwargs):
 
     return merged_motif_seqs, merged_motif_dict
 
+def merge_motifs_UPGMA(motif_seqs):
+    """ Use an UPGMA algorithm to merge motifs. 
+
+    Arguments:
+    motif_seqs -- nested dict, with the following structure: 
+        {motif: {seq_idx: idx, atten_region_pos: (start, end)}}
+        where seq_idx indicates indices of pos_seqs containing a motif, and
+        atten_region_pos indicates where the high attention region is located.
+
+
+    steps:
+    1) create a pairwise distance metric for each motif in motif_seqs.keys()
+        a) use biopython PairwiseAligner to get an alignment score for each pair
+        b) since the alignment score is a measure of similarity, normalize and convert to distance (d = 1 - s/smax)
+    2) use scipy.cluster.heirarchy.average to calculate the best way to combine motifs
+    3) for each group of motifs, do alignment bookkeeping to align them and adjust sequence indexes
+
+    """
+
+    from Bio import Align
+    
+    aligner = Align.PairwiseAligner()
+    ### set up scores to slightly favor mismatching over shifts
+    aligner.match_score = 2
+    aligner.mismatch_score = -1
+    aligner.open_gap_score = -0.75
+    aligner.extend_gap_score = -0.75
+    aligner.internal_gap_score = -10000.0 # prohibit internal gaps
+
+    motifs = list(motif_seqs.keys())
+    m = len(motifs)
+
+    ## create similarity matrix
+    similarity = np.zeros((m,m), dtype=int)
+    for i, motif_a in enumerate(motifs):
+        for j, motif_b in enumerate(motifs):
+            if i == j:
+                continue
+            score=aligner.align(motif_a, motif_b).score
+            #score = score / (len(motif_a)+len(motif_b)) ## account for longer sequences having higher scores?
+            similarity[i][j] = score
+
+    ## convert to distance matrix
+    smax = similarity.max()
+    distance = 1 - similarity/smax
+    for i in range(m):
+        distance[i,i] = 0
+
+    ## do clustering
+    condensed_distance = scipy.spatial.distance.squareform(distance)
+    linkage_matrix = scipy.cluster.hierarchy.average(condensed_distance)
+    # linkage_matrix shape is (m-1, 4)
+    #   each row is [index_a, index_b, distance, number of observations]
+    #   can be plotted with scipy.cluster.hierarchy.dendrogram and matplotlib:
+    #      import matplotlib.pyplot as plt
+    #      fig = plt.figure()
+    #      dn = dendrogram(linkage_matrix, labels=motifs, leaf_rotation=90)
+    #      plt.show()
+    n=10
+    groups = scipy.cluster.hierarchy.fcluster(linkage_matrix, n, criterion='maxclust') ## lots of different options for this - for now just force them into 10 clusters
+    clusters = [[] for i in range(n)]
+    for x,y in enumerate(groups):
+        clusters[y-1].append(motifs[x])
+
+
+    ### do alignment bookkeeping
+    merged_motifs = {}
+    for cluster in clusters:
+        key_motif = cluster[0]
+        d = {
+            'seq_idx':motif_seqs[key_motif]['seq_idx'].copy(),
+            'atten_region_pos':motif_seqs[key_motif]['atten_region_pos'].copy(),
+            'motifs':[key_motif]
+            }
+        for motif in cluster[1:]:
+            alignment = aligner.align(motif, key_motif)[0]
+
+            # calculate offset to be added/subtracted from atten_region_pos
+            a = alignment.aligned # [motif or key_motif][aligned_segment][start or end]
+            left_offset = a[0][0][0] - a[1][0][0] # always query - key
+            if (a[0][0][1] <= len(motif)) & (a[1][0][1] == len(key_motif)): # inside
+                right_offset = len(motif) - a[0][0][1]
+            elif (a[0][0][1] == len(motif)) & (a[1][0][1] < len(key_motif)): # left shift
+                right_offset = a[1][0][1] - len(key_motif)
+            elif (a[0][0][1] < len(motif)) & (a[1][0][1] == len(key_motif)): # right shift
+                right_offset = len(motif) - a[0][0][1]
+
+            new_motif_seq = motif_seqs[motif].copy()
+            # add seq_idx back to new merged dict
+            d['seq_idx'].extend(motif_seqs[motif]['seq_idx'].copy())
+
+            # calculate new atten_region_pos after adding/subtracting offset
+            new_atten_region_pos = [(pos[0]+left_offset, pos[1]-right_offset) \
+                                    for pos in motif_seqs[motif]['atten_region_pos'].copy()]
+            d['atten_region_pos'].extend(new_atten_region_pos)
+            d['motifs'].append(motif)
+
+        merged_motifs[key_motif] = d
+
+    
+    return merged_motifs, {'linkage_matrix':linkage_matrix, 'motif_list':motifs}
+
+
 def make_window(motif_seqs, pos_seqs, window_size=24):
     """
     Function to extract fixed, equal length sequences centered at high-attention motif instance.
@@ -583,13 +687,16 @@ def motif_analysis(pos_seqs,
     if verbose:
         print("* Filtered {} motifs".format(len(motifs_to_keep)))
         print("* Merging similar motif instances")
-    if 'align_cond' in kwargs:
-        merged_motif_seqs, merged_motif_dict = merge_motifs(motif_seqs, min_len=min_len, 
-                                         align_all_ties = align_all_ties,
-                                         cond=kwargs['align_cond'])
-    else:
-        merged_motif_seqs, merged_motif_dict = merge_motifs(motif_seqs, min_len=min_len,
-                                         align_all_ties = align_all_ties)
+    # if 'align_cond' in kwargs:
+    #     merged_motif_seqs, merged_motif_dict = merge_motifs(motif_seqs, min_len=min_len, 
+    #                                      align_all_ties = align_all_ties,
+    #                                      cond=kwargs['align_cond'])
+    # else:
+    #     merged_motif_seqs, merged_motif_dict = merge_motifs(motif_seqs, min_len=min_len,
+    #                                      align_all_ties = align_all_ties)
+
+    merged_motif_seqs, linkage_data = merge_motifs_UPGMA(motif_seqs)
+    merged_motif_dict = {k:merged_motif_seqs[k]['motifs'] for k in merged_motif_seqs.keys()}
 
         
     # make fixed-length window sequences
@@ -643,5 +750,5 @@ def motif_analysis(pos_seqs,
             #       1) make sure biopython is version 1.8 or greater (if you can't, edit the url in Bio/motifs/__init__.py ln506 to use https instead of http)
             #       2) the website currently (Feb 2023) doesn't support exporting in formats other than .eps, so we get eps instead of png.
     
-    return merged_motif_seqs
+    return merged_motif_seqs, merged_motif_dict, linkage_data
 
