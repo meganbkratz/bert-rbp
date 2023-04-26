@@ -33,11 +33,16 @@ def search_training_data(sequence_file, training_file):
                     matches.append((line, lines[i+1]))
     return matches
 
+class FastaParsingError(Exception):
+    pass
+
+
 def parse_dna_range(s):
     p = re.compile(r'chr[0-9MXY]+:[0-9]+-[0-9]+')
     m = p.search(s)
     if m is None:
-        print(' --- Could not parse chr:start-end pattern from "%s"'%s)
+        print(' --- Could not parse chr:start-end pattern from "%s"' % s)
+        raise FastaParsingError(' --- Could not parse chr:start-end pattern from "%s"' % s)
     p2 = re.compile(r'[0-9MXY]+')
     chromosome, start, end = p2.findall(m.group())
     start = int(start)

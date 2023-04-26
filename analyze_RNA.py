@@ -9,7 +9,7 @@ from src.transformers_DNABERT import BertForSequenceClassification, DNATokenizer
 from src.transformers_DNABERT.data.processors.utils import InputExample, DataProcessor
 from src.transformers_DNABERT import glue_convert_examples_to_features as convert_examples_to_features
 from motif.motif_utils import seq2kmer
-from util import parse_dna_range
+from util import parse_dna_range, FastaParsingError
 import config
 
 
@@ -56,6 +56,8 @@ def load_fasta_genome(filename, tokenizer, n_kmer):
     datasets = OrderedDict()
     dataset_indices = {'dna_indices': {}, 'rna_indices': {}, 'metainfo': {}}
     for splice in SeqIO.parse(filename, 'fasta'):
+        chromosome, start, end = parse_dna_range(splice.description)
+
         examples = []
         dna_indices = []
         rna_indices = []
@@ -80,8 +82,6 @@ def load_fasta_genome(filename, tokenizer, n_kmer):
             pad_token=tokenizer.convert_tokens_to_ids([tokenizer.pad_token])[0]
             )
         all_input_ids = torch.tensor([f.input_ids for f in features], dtype=torch.long)
-
-        chromosome, start, end = parse_dna_range(splice.description)
 
         datasets[splice.id] = all_input_ids
         dataset_indices['metainfo'][splice.id] = {
@@ -229,7 +229,7 @@ if __name__ == '__main__':
         try:
             dataset = load_fasta_genome(sequence_path, tokenizer, args.kmer)
             print("Loaded genomic sequence data from %s" % sequence_path)
-        except:
+        except FastaParsingError:
             print("Loading RNA sequence data from fasta file: %s" % sequence_path)
             dataset = load_fasta_sequences(sequence_path, tokenizer, args.kmer)
     elif sequence_path[-4:] == '.tsv':
