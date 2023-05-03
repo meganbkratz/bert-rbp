@@ -6,9 +6,9 @@ import torch
 from torch.utils.data import DataLoader
 from Bio import SeqIO
 from src.transformers_DNABERT import BertForSequenceClassification, DNATokenizer
-from src.transformers_DNABERT.data.processors.utils import InputExample, DataProcessor
+from src.transformers_DNABERT.data.processors.utils import InputExample, DataProcessor, InputFeatures
 from src.transformers_DNABERT import glue_convert_examples_to_features as convert_examples_to_features
-from motif.motif_utils import seq2kmer
+from motif.motif_utils import seq2kmer, seq2kmer_aslist
 from util import parse_dna_range, FastaParsingError
 import config
 
@@ -95,6 +95,72 @@ def load_fasta_genome(filename, tokenizer, n_kmer):
 
     datasets['indices'] = dataset_indices
     return datasets
+
+def load_fasta_with_introns(filename, tokenizer, n_kmer):
+    max_length = 101
+    spacing = 10
+
+    datasets = OrderedDict()
+    dataset_indices = {'dna_indices': {}, 'rna_indices': {}, 'metainfo': {}}
+    for splice in SeqIO.parse(filename, 'fasta'):
+        chromosome, start, end = parse_dna_range(splice.description)
+
+        ### load unspliced sequence
+        dna_sequence = str(splice.seq)
+        features = []
+        indices = []
+        i = 0
+        while i <= len(dna_sequence) - max_length:
+            kmer_dna_sequence = seq2kmer_aslist(dna_sequence[i:i+max_length].upper().replace('U', 'T'), n_kmer)
+            inputs = tokenizer.encode_plus(kmer_dna_sequence, None, add_special_tokens=True, max_length=max_length)
+            dna_input_ids, token_type_ids = inputs["input_ids"], inputs["token_type_ids"]
+            indices.append(int(i+max_length/2))
+
+            features.append(InputFeatures(input_ids=dna_input_ids))
+            i += spacing
+
+        dna_input_ids = torch.tensor([f.input_ids for f in features], dtype=torch.long)
+        datasets[splice.id+'_unspliced'] = dna_input_ids
+        dataset_indices['dna_indices'][splice.id+'_unspliced'] = indices 
+        dataset_indices['rna_indices'][splice.id+'_unspliced'] = indices
+        dataset_indices['metainfo'][splice.id] = {
+            'desc': splice.description,
+            'chromosome': chromosome,
+            'range_start': start,
+            'range_end': end,
+            }
+
+
+        ### load spliced sequence
+        features = []
+        dna_indices = []
+        rna_indices = []
+        dna = np.array([s for s in splice.seq])
+        mask = np.char.isupper(dna)
+        rna = "".join(dna[mask])
+        indices = np.argwhere(mask)
+        i = 0
+        while i <= len(rna)-max_length:
+            kmer_sequence = seq2kmer_aslist(rna[i:i+max_length].replace('U', 'T'), n_kmer)
+            inputs = tokenizer.encode_plus(kmer_sequence, None, add_special_tokens=True, max_length=max_length)
+            input_ids, token_type_ids = inputs["input_ids"], inputs["token_type_ids"]
+            rna_indices.append(int(i+max_length/2))
+            dna_indices.append(indices[int(i+max_length/2)][0])
+
+            features.append(InputFeatures(input_ids=input_ids))
+            i += spacing
+
+        rna_input_ids = torch.tensor([f.input_ids for f in features], dtype=torch.long)
+
+        datasets[splice.id] = rna_input_ids
+        dataset_indices['dna_indices'][splice.id] = dna_indices
+        dataset_indices['rna_indices'][splice.id] = rna_indices
+
+    datasets['indices']=dataset_indices
+    return datasets
+
+    
+
 
 
 def load_tsv_sequences(filename, tokenizer):
@@ -227,7 +293,8 @@ if __name__ == '__main__':
 
     if sequence_path[-3:] == '.fa' or sequence_path[-6:] == '.fasta':
         try:
-            dataset = load_fasta_genome(sequence_path, tokenizer, args.kmer)
+            #dataset = load_fasta_genome(sequence_path, tokenizer, args.kmer)
+            dataset = load_fasta_with_introns(sequence_path, tokenizer, args.kmer)
             print("Loaded genomic sequence data from %s" % sequence_path)
         except FastaParsingError:
             print("Loading RNA sequence data from fasta file: %s" % sequence_path)
