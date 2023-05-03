@@ -95,6 +95,24 @@ def plot_metric(metrics, key=None, rbp=None):
 
 	return p
 
+def write_RBP_list(metrics, filename):
+	import yaml
+
+	valids = []
+	invalids = []
+
+	for rbp in metrics.keys():
+		s = summary(metrics[rbp]['metrics'], min_precision=0.9, min_recall=0.1)
+		if len(s['valid_thresholds']) > 0:
+			valids.append(rbp)
+		else:
+			invalids.append(rbp)
+
+	with open(filename, 'w') as f:
+		yaml.dump({'valid_RBPs':valids, 'invalid_RBPs':invalids, 'criteria':{'min_precision':0.9, 'min_recall':0.1}}, f)
+
+
+
 if __name__ == '__main__':
 
 	pg.dbg()
@@ -119,6 +137,8 @@ if __name__ == '__main__':
 
 	prec_plot = plot_metric(metrics, key='precision', rbp=None)
 	recall_plot = plot_metric(metrics, key='recall', rbp=None)
+
+	write_RBP_list(metrics, '/home/megan/work/smithlab/bert_manuscript/figure_1/valid_rbps.yaml')
 
 	
 
