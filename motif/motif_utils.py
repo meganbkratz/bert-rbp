@@ -412,24 +412,15 @@ def merge_motifs_UPGMA(motif_seqs):
     aligner.extend_gap_score = -0.75
     aligner.internal_gap_score = -10000.0 # prohibit internal gaps
 
-    motifs = list(motif_seqs.keys())
-    m = len(motifs)
+    # create similarity matrix from alignment scores
+    motifs = sorted(motif_seqs.keys())
+    similarity = get_alignment_matrix(motifs, aligner)
 
-    ## create similarity matrix
-    similarity = np.zeros((m,m), dtype=int)
-    for i, motif_a in enumerate(motifs):
-        for j, motif_b in enumerate(motifs):
-            if i == j:
-                continue
-            score=aligner.align(motif_a, motif_b).score
-            #score = score / (len(motif_a)+len(motif_b)) ## account for longer sequences having higher scores?
-            similarity[i][j] = score
-
-    ## convert to distance matrix
+    # convert to distance matrix
     smax = similarity.max()
     distance = 1 - similarity/smax
-    for i in range(m):
-        distance[i,i] = 0
+    for i in range(len(motifs)):
+        distance[i, i] = 0
 
     ## do clustering
     condensed_distance = scipy.spatial.distance.squareform(distance)
@@ -441,12 +432,12 @@ def merge_motifs_UPGMA(motif_seqs):
     #      fig = plt.figure()
     #      dn = dendrogram(linkage_matrix, labels=motifs, leaf_rotation=90)
     #      plt.show()
-    n=10
-    groups = scipy.cluster.hierarchy.fcluster(linkage_matrix, n, criterion='maxclust') ## lots of different options for this - for now just force them into 10 clusters
-    clusters = [[] for i in range(n)]
-    for x,y in enumerate(groups):
-        clusters[y-1].append(motifs[x])
 
+    max_distance = 0.75
+    groups = scipy.cluster.hierarchy.fcluster(linkage_matrix, 0.75, criterion='distance')
+    clusters = [[] for i in range(len(set(groups)))]
+    for x, y in enumerate(groups):
+        clusters[y-1].append(motifs[x])
 
     ### do alignment bookkeeping
     merged_motifs = {}
@@ -482,8 +473,25 @@ def merge_motifs_UPGMA(motif_seqs):
 
         merged_motifs[key_motif] = d
 
-    
-    return merged_motifs, {'linkage_matrix':linkage_matrix, 'motif_list':motifs}
+    linkage_data = {'linkage_matrix': linkage_matrix, 'motif_list': motifs, 'max_distance': max_distance}
+    return merged_motifs, linkage_data
+
+
+def get_alignment_matrix(motifs, aligner):
+    """Use Bio.Align.PairwiseAligner to return a matrix of alignment scores for each pair of motifs in the given list"""
+
+    m = len(motifs)
+
+    # create similarity matrix
+    similarity = np.zeros((m, m), dtype=float)
+    for i, motif_a in enumerate(motifs):
+        for j, motif_b in enumerate(motifs):
+            if i == j:
+                continue
+            score = aligner.align(motif_a, motif_b).score
+            similarity[i][j] = score
+
+    return similarity
 
 
 def make_window(motif_seqs, pos_seqs, window_size=24):
@@ -686,17 +694,23 @@ def motif_analysis(pos_seqs,
     merged_motif_dict = {}
     if verbose:
         print("* Filtered {} motifs".format(len(motifs_to_keep)))
-        print("* Merging similar motif instances")
-    # if 'align_cond' in kwargs:
-    #     merged_motif_seqs, merged_motif_dict = merge_motifs(motif_seqs, min_len=min_len, 
-    #                                      align_all_ties = align_all_ties,
-    #                                      cond=kwargs['align_cond'])
-    # else:
-    #     merged_motif_seqs, merged_motif_dict = merge_motifs(motif_seqs, min_len=min_len,
-    #                                      align_all_ties = align_all_ties)
+        
+    linkage_data = None
+    if kwargs.get('merge_method') == 'UPGMA':
+        print("* Merging similar motif instances using UPGMA method")
+        merged_motif_seqs, linkage_data = merge_motifs_UPGMA(motif_seqs)
+        merged_motif_dict = {k:merged_motif_seqs[k]['motifs'] for k in merged_motif_seqs.keys()}
+    else:
+        print("* Merging similar motif instances using bert-rbp method")
+        if 'align_cond' in kwargs:
+            merged_motif_seqs, merged_motif_dict = merge_motifs(motif_seqs, min_len=min_len, 
+                                             align_all_ties = align_all_ties,
+                                             cond=kwargs['align_cond'])
+        else:
+            merged_motif_seqs, merged_motif_dict = merge_motifs(motif_seqs, min_len=min_len,
+                                             align_all_ties = align_all_ties)
 
-    merged_motif_seqs, linkage_data = merge_motifs_UPGMA(motif_seqs)
-    merged_motif_dict = {k:merged_motif_seqs[k]['motifs'] for k in merged_motif_seqs.keys()}
+
 
         
     # make fixed-length window sequences
