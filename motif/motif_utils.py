@@ -383,14 +383,19 @@ def merge_motifs(motif_seqs, min_len=5, align_all_ties=True, **kwargs):
 
     return merged_motif_seqs, merged_motif_dict
 
+
 def merge_motifs_UPGMA(motif_seqs):
-    """ Use an UPGMA algorithm to merge motifs. 
+    """ Use an UPGMA algorithm to merge motifs.
 
     Arguments:
-    motif_seqs -- nested dict, with the following structure: 
+    motif_seqs -- nested dict, with the following structure:
         {motif: {seq_idx: idx, atten_region_pos: (start, end)}}
         where seq_idx indicates indices of pos_seqs containing a motif, and
         atten_region_pos indicates where the high attention region is located.
+
+    Returns:
+    merged_motif_seqs -- a nested dict with the structure:
+        {key_motif: {seq_idx: idx, atten_region_pos: (start, end), motifs:[list of motifs that have been merged]}}
 
 
     steps:
@@ -401,16 +406,16 @@ def merge_motifs_UPGMA(motif_seqs):
     3) for each group of motifs, do alignment bookkeeping to align them and adjust sequence indexes
 
     """
-
+    # set up aligner
     from Bio import Align
-    
+
     aligner = Align.PairwiseAligner()
-    ### set up scores to slightly favor mismatching over shifts
+    # set up scores to slightly favor mismatching over shifts
     aligner.match_score = 2
     aligner.mismatch_score = -1
     aligner.open_gap_score = -0.75
     aligner.extend_gap_score = -0.75
-    aligner.internal_gap_score = -10000.0 # prohibit internal gaps
+    aligner.internal_gap_score = -10000.0  # prohibit internal gaps
 
     # create similarity matrix from alignment scores
     motifs = sorted(motif_seqs.keys())
@@ -422,7 +427,7 @@ def merge_motifs_UPGMA(motif_seqs):
     for i in range(len(motifs)):
         distance[i, i] = 0
 
-    ## do clustering
+    # do clustering
     condensed_distance = scipy.spatial.distance.squareform(distance)
     linkage_matrix = scipy.cluster.hierarchy.average(condensed_distance)
     # linkage_matrix shape is (m-1, 4)
@@ -439,36 +444,36 @@ def merge_motifs_UPGMA(motif_seqs):
     for x, y in enumerate(groups):
         clusters[y-1].append(motifs[x])
 
-    ### do alignment bookkeeping
+    # do alignment bookkeeping
     merged_motifs = {}
     for cluster in clusters:
         key_motif = cluster[0]
         d = {
-            'seq_idx':motif_seqs[key_motif]['seq_idx'].copy(),
-            'atten_region_pos':motif_seqs[key_motif]['atten_region_pos'].copy(),
-            'motifs':[key_motif]
+            'seq_idx': motif_seqs[key_motif]['seq_idx'].copy(),
+            'atten_region_pos': motif_seqs[key_motif]['atten_region_pos'].copy(),
+            'motifs': [key_motif]
             }
         for motif in cluster[1:]:
             alignment = aligner.align(motif, key_motif)[0]
 
             # calculate offset to be added/subtracted from atten_region_pos
-            a = alignment.aligned # [motif or key_motif][aligned_segment][start or end]
-            left_offset = a[0][0][0] - a[1][0][0] # always query - key
-            if (a[0][0][1] <= len(motif)) & (a[1][0][1] == len(key_motif)): # inside
+            a = alignment.aligned  # [motif or key_motif][aligned_segment][start or end]
+            left_offset = a[0][0][0] - a[1][0][0]  # always query - key
+            if (a[0][0][1] <= len(motif)) & (a[1][0][1] == len(key_motif)):  # inside
                 right_offset = len(motif) - a[0][0][1]
-            elif (a[0][0][1] == len(motif)) & (a[1][0][1] < len(key_motif)): # left shift
+            elif (a[0][0][1] == len(motif)) & (a[1][0][1] < len(key_motif)):  # left shift
                 right_offset = a[1][0][1] - len(key_motif)
-            elif (a[0][0][1] < len(motif)) & (a[1][0][1] == len(key_motif)): # right shift
+            elif (a[0][0][1] < len(motif)) & (a[1][0][1] == len(key_motif)):  # right shift
                 right_offset = len(motif) - a[0][0][1]
 
-            new_motif_seq = motif_seqs[motif].copy()
             # add seq_idx back to new merged dict
             d['seq_idx'].extend(motif_seqs[motif]['seq_idx'].copy())
 
             # calculate new atten_region_pos after adding/subtracting offset
-            new_atten_region_pos = [(pos[0]+left_offset, pos[1]-right_offset) \
-                                    for pos in motif_seqs[motif]['atten_region_pos'].copy()]
+            old_positions = motif_seqs[motif]['atten_region_pos'].copy()
+            new_atten_region_pos = [(pos[0]+left_offset, pos[1]-right_offset) for pos in old_positions]
             d['atten_region_pos'].extend(new_atten_region_pos)
+
             d['motifs'].append(motif)
 
         merged_motifs[key_motif] = d
