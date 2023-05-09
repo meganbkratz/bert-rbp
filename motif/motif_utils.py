@@ -1,9 +1,11 @@
 #### ::: utils for DNABERT-viz motif search ::: ####
 
 import os
+import itertools
 import pandas as pd
 import numpy as np
 import scipy
+
 
 def kmer2seq(kmers):
     """
@@ -302,8 +304,6 @@ def merge_motifs(motif_seqs, min_len=5, align_all_ties=True, **kwargs):
             merged_motif_seqs[motif_seqs_list[i]]["atten_region_pos"] = motif_seqs[motif_seqs_list[i]]["atten_region_pos"].copy()
             merged_motif_dict[motif_seqs_list[i]] = [alignment_score_matrix[i], motif_seqs_list[i]]
     
-    print(merged_motif_dict)
-
     # for motif in sorted(motif_seqs, key=len): # query motif
     for motif in motif_seqs_list: # query motif
         alignments = []
@@ -417,13 +417,24 @@ def merge_motifs_UPGMA(motif_seqs):
     aligner.extend_gap_score = -0.75
     aligner.internal_gap_score = -10000.0  # prohibit internal gaps
 
-    # create similarity matrix from alignment scores
+    min_similarity = 5  # slightly more permissive than bert-rbps conditions
+
     motifs = sorted(motif_seqs.keys())
-    similarity = get_alignment_matrix(motifs, aligner)
+    m = len(motifs)
+
+    # create similarity matrix
+    similarity = np.zeros((m, m), dtype=float)
+    for i, j in itertools.product(range(m), range(m)):
+        if i == j:
+            continue
+        score = aligner.align(motifs[i], motifs[j]).score
+        score -= 0.75 * (len(motifs[i])+len(motifs[j]) - 10)  # adjust score so that longer motifs don't have quite as much advantage
+        similarity[i][j] = score
 
     # convert to distance matrix
     smax = similarity.max()
     distance = 1 - similarity/smax
+    max_distance = 1-min_similarity/smax  # calculate max_distance for use in the clustering step
     for i in range(len(motifs)):
         distance[i, i] = 0
 
@@ -438,8 +449,8 @@ def merge_motifs_UPGMA(motif_seqs):
     #      dn = dendrogram(linkage_matrix, labels=motifs, leaf_rotation=90)
     #      plt.show()
 
-    max_distance = 0.75
-    groups = scipy.cluster.hierarchy.fcluster(linkage_matrix, 0.75, criterion='distance')
+    groups = scipy.cluster.hierarchy.fcluster(linkage_matrix, max_distance, criterion='distance')
+    #groups = scipy.cluster.hierarchy.fcluster(linkage_matrix, 10, criterion='maxclust')
     clusters = [[] for i in range(len(set(groups)))]
     for x, y in enumerate(groups):
         clusters[y-1].append(motifs[x])
@@ -478,25 +489,25 @@ def merge_motifs_UPGMA(motif_seqs):
 
         merged_motifs[key_motif] = d
 
-    linkage_data = {'linkage_matrix': linkage_matrix, 'motif_list': motifs, 'max_distance': max_distance}
+    linkage_data = {'linkage_matrix': linkage_matrix, 'motif_list': motifs, 'max_distance': max_distance, 'similarity':similarity}
     return merged_motifs, linkage_data
 
 
-def get_alignment_matrix(motifs, aligner):
-    """Use Bio.Align.PairwiseAligner to return a matrix of alignment scores for each pair of motifs in the given list"""
+# def get_alignment_matrix(motifs, aligner):
+#     """Use Bio.Align.PairwiseAligner to return a matrix of alignment scores for each pair of motifs in the given list"""
 
-    m = len(motifs)
+#     m = len(motifs)
 
-    # create similarity matrix
-    similarity = np.zeros((m, m), dtype=float)
-    for i, motif_a in enumerate(motifs):
-        for j, motif_b in enumerate(motifs):
-            if i == j:
-                continue
-            score = aligner.align(motif_a, motif_b).score
-            similarity[i][j] = score
+#     # create similarity matrix
+#     similarity = np.zeros((m, m), dtype=float)
+#     for i, motif_a in enumerate(motifs):
+#         for j, motif_b in enumerate(motifs):
+#             if i == j:
+#                 continue
+#             score = aligner.align(motif_a, motif_b).score
+#             similarity[i][j] = score
 
-    return similarity
+#     return similarity
 
 
 def make_window(motif_seqs, pos_seqs, window_size=24):
@@ -720,28 +731,31 @@ def motif_analysis(pos_seqs,
         
     # make fixed-length window sequences
     if verbose:
-        print("* Left {} motifs".format(len(merged_motif_seqs)))
+        print("* Left {} motifs after merge".format(len(merged_motif_seqs)))
         print("* Making fixed_length window = {}".format(window_size))
     merged_motif_seqs = make_window(merged_motif_seqs, pos_seqs, window_size=window_size)
     
     # remove motifs with only few instances
-    if verbose:
-        print("* Removing motifs with less than {} instances".format(min_n_motif))
+
     merged_motif_seqs = {k: coords for k, coords in merged_motif_seqs.items() if len(coords['seq_idx']) >= min_n_motif}
+    if verbose:
+        print("* Removing motifs with less than {} instances. Left {} motifs".format(min_n_motif, len(merged_motif_seqs.keys())))
     merged_motif_seqs = convert_seqs_to_RNA(merged_motif_seqs)
     merged_motif_dict = convert_dict_to_RNA(merged_motif_dict)
     
     # selecting top N motifs
-    if verbose:
-        print("* Selecting top {} motifs with highest number of instances".format(top_n_motif))
+
     num_instances = [len(instances["seq_idx"]) for motif, instances in merged_motif_seqs.items()]
     if len(num_instances)>top_n_motif:
         minimum_num = sorted(num_instances)[-top_n_motif]
         merged_motif_seqs = {k: coords for k, coords in merged_motif_seqs.items() if len(coords['seq_idx']) >= minimum_num}
+    if verbose:
+        print("* Selecting top {} motifs with highest number of instances".format(top_n_motif))
+        print("* Returning {} motifs".format(len(merged_motif_seqs)))
+
 
     if save_file_dir is not None:
         if verbose:
-            print("* Left {} motifs".format(len(merged_motif_seqs)))
             print("* Saving outputs to directory")
         os.makedirs(save_file_dir, exist_ok=True)
         
