@@ -554,7 +554,15 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 				alpha = 100
 			if probs['indices'].get('dna_indices') is not None:
 				start = probs['indices'].get('metainfo', {}).get(spliced_key, {}).get('range_start', 0)
-				#start = 0
+
+				# workaround for an svg export bug that produces errors when axis numbers are very big (so we make them small)
+				# 	- for normal operation the following block can be commented out, this is only necessary when exporting
+				#	  svg files for figures
+				# start_dna = probs['indices'].get('metainfo', {}).get(k, {}).get('range_start', 0)
+				# start = start_dna % 100
+				# offset = start_dna - start
+				# print("dna_index offset for {splice}: {start}".format(splice=k, start=offset))
+
 				dna_indices = np.array(probs['indices']['dna_indices'][k]) + start
 				self.genomePlot.plot(x=dna_indices, y=probs[k], symbolBrush=pg.mkBrush(color.red(), color.green(), color.green(), alpha), name=k, pen=None, symbolPen=None, symbol=symbol)
 				if applyFilter:
