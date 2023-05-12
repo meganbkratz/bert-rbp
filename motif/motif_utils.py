@@ -438,19 +438,13 @@ def merge_motifs_UPGMA(motif_seqs):
     for i in range(len(motifs)):
         distance[i, i] = 0
 
-    # do clustering
+    # create linkage matrix, do clustering
     condensed_distance = scipy.spatial.distance.squareform(distance)
     linkage_matrix = scipy.cluster.hierarchy.average(condensed_distance)
-    # linkage_matrix shape is (m-1, 4)
-    #   each row is [index_a, index_b, distance, number of observations]
-    #   can be plotted with scipy.cluster.hierarchy.dendrogram and matplotlib:
-    #      import matplotlib.pyplot as plt
-    #      fig = plt.figure()
-    #      dn = dendrogram(linkage_matrix, labels=motifs, leaf_rotation=90)
-    #      plt.show()
-
+    
     groups = scipy.cluster.hierarchy.fcluster(linkage_matrix, max_distance, criterion='distance')
-    #groups = scipy.cluster.hierarchy.fcluster(linkage_matrix, 10, criterion='maxclust')
+    # groups = scipy.cluster.hierarchy.fcluster(linkage_matrix, 10, criterion='maxclust')
+
     clusters = [[] for i in range(len(set(groups)))]
     for x, y in enumerate(groups):
         clusters[y-1].append(motifs[x])
@@ -489,25 +483,13 @@ def merge_motifs_UPGMA(motif_seqs):
 
         merged_motifs[key_motif] = d
 
-    linkage_data = {'linkage_matrix': linkage_matrix, 'motif_list': motifs, 'max_distance': max_distance, 'similarity':similarity}
+    linkage_data = {
+        'linkage_matrix': linkage_matrix,
+        'motif_list': motifs,
+        'max_distance': max_distance,
+        'similarity': similarity
+        }
     return merged_motifs, linkage_data
-
-
-# def get_alignment_matrix(motifs, aligner):
-#     """Use Bio.Align.PairwiseAligner to return a matrix of alignment scores for each pair of motifs in the given list"""
-
-#     m = len(motifs)
-
-#     # create similarity matrix
-#     similarity = np.zeros((m, m), dtype=float)
-#     for i, motif_a in enumerate(motifs):
-#         for j, motif_b in enumerate(motifs):
-#             if i == j:
-#                 continue
-#             score = aligner.align(motif_a, motif_b).score
-#             similarity[i][j] = score
-
-#     return similarity
 
 
 def make_window(motif_seqs, pos_seqs, window_size=24):
