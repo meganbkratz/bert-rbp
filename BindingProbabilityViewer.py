@@ -540,10 +540,8 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 			else:
 				spliced_key = k
 				symbol = 'o'
-			color = colors.get(spliced_key)
-			if color is None:
-				color = pg.intColor(i, hues)
-				colors[spliced_key] = color
+
+			color = pg.intColor(i, hues)
 
 			if self.splices[k].checkState(0) == pg.QtCore.Qt.CheckState.Unchecked:
 				continue
