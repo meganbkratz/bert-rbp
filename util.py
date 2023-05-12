@@ -1,4 +1,4 @@
-import re
+import os, re
 import numpy as np
 
 
@@ -41,6 +41,13 @@ def parse_dna_range(s):
     start = int(start)
     end = int(end)
     return (chromosome, start, end)
+
+def find_fasta_file(prob_file):
+    species_dir = os.path.dirname(os.path.dirname(prob_file))
+    for f in os.listdir(species_dir):
+        if f[-13:] == 'genomic.fasta' or f[-10:] == 'genomic.fa':
+            return os.path.join(species_dir, f)
+    print("Unable to find .fasta file for %s. Can't plot sequences" % prob_file)
 
 
 # Functions for analyzing models and finding the best threshold to use:
