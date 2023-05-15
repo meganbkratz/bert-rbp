@@ -77,7 +77,7 @@ def load_sequence(fasta_file):
         indices = np.argwhere(mask)[:,0]
 
         chromosome, start, end = util.parse_dna_range(splice.description)
-        sequences[splice.id] = {'sequence':rna, 'dna_indices':indices+start}
+        sequences[splice.id] = {'sequence':''.join(list(rna)).replace('T', 'U'), 'dna_indices':indices+start}
 
     return sequences
 
@@ -86,6 +86,8 @@ def export_regions(model_dir, threshold=None, n_contiguous=3, save_prefix="bindi
     ### save 2 .csv files:
     #       1) one record per RBP per splice - fields: Splice, RBP, n_regions, model_type, threshold, n_contiguous
     #       2) one record per region (or site?) fields: Splice, RBP, model_type, threshold, n_contiguous, binding_probability (individual or mean), region or site coordinates, region length?, region id 
+    
+    print("Starting region analysis for {}".format(model_dir))
     summary_file = os.path.join(model_dir, save_prefix+'_summary.csv')
     region_file = os.path.join(model_dir, save_prefix+'.csv')
 
@@ -104,14 +106,15 @@ def export_regions(model_dir, threshold=None, n_contiguous=3, save_prefix="bindi
 
     model_type = os.path.split(model_dir)[1]
 
-    sequence_file = util.find_fasta_file(os.path.join(model_dir, os.listdir(model_dir)[0]))
-    sequences = load_sequence(sequence_file)
-
-
     for prob_file in sorted(os.listdir(model_dir)):
         if os.path.splitext(prob_file)[1] == '.pk':
             probs = load_probabilities(os.path.join(model_dir, prob_file), quiet=True)
             rbp = parseRBP(probs, filename=prob_file)
+
+            sequence_file = probs.get('metainfo', {}).get('sequence_path')
+            if sequence_file is None:
+                sequence_file = util.find_fasta_file(os.path.join(model_dir, os.listdir(model_dir)[0]))
+            sequences = load_sequence(sequence_file)
 
             if use_dynamic_thresholding:
                 stats_file = os.path.join(config.rbp_performance_dir, model_type, rbp+'_eval_performance.csv')
@@ -134,6 +137,9 @@ def export_regions(model_dir, threshold=None, n_contiguous=3, save_prefix="bindi
                         n_contiguous=n_contiguous))
             with open(region_file, 'a') as f:
                 for splice in sorted(regions.keys()):
+                    if splice[-10:] == '_unspliced':  # don't worry about finding regions in introns for now
+                        continue
+
                     chrom = probs['indices']['metainfo'][splice]['chromosome']
                     start = probs['indices']['metainfo'][splice]['range_start']
                     for r in regions[splice]:
@@ -153,7 +159,7 @@ def export_regions(model_dir, threshold=None, n_contiguous=3, save_prefix="bindi
                             region_len=r['region_length'],
                             sequence=''.join(sequences[splice]['sequence'][r['rna_indices'][0]-50:r['rna_indices'][1]+50])
                             ))
-    print("Finished exporting binding region info for %s. (saved as: %s & %s)" % (model_dir, os.path.split(summary_file)[1], os.path.split(region_file)[1]))
+    print("     Finished exporting binding region info for %s. (saved as: %s & %s)" % (model_dir, os.path.split(summary_file)[1], os.path.split(region_file)[1]))
 
 def parseRBP(probs, filename=None):
         rbp = probs.get('metainfo', {}).get('rbp_name')
@@ -170,9 +176,6 @@ def parseRBP(probs, filename=None):
 
 
 if __name__ == "__main__":
-    import pyqtgraph as pg
-    pg.dbg()
-
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--parent_directory", type=str, help="The path to the directory where the model_output.pk files are stored.")
@@ -185,8 +188,6 @@ if __name__ == "__main__":
         threshold = None
     else:
         threshold = float(args.threshold)
-
-    print('threshold:', threshold)
 
     save_prefix='binding_regions_%iN'%args.n_contiguous
     export_regions(args.parent_directory, threshold=args.threshold, n_contiguous=args.n_contiguous, save_prefix=save_prefix)
