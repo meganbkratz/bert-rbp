@@ -93,7 +93,7 @@ def export_regions(model_dir, threshold=None, n_contiguous=3, save_prefix="bindi
 
     with open(summary_file, 'w') as f:
         f.write("parent_directory:, %s, \n" % model_dir)
-        f.write("RBP, Splice, n_regions, model_type, threshold, n_contiguous, \n")
+        f.write("RBP, Splice, n_regions, sum_of_region_lengths, longest_region_length, model_type, threshold, n_contiguous, \n")
 
     with open(region_file, 'w') as f:
         f.write("parent_directory:, %s, \n" % model_dir)
@@ -128,10 +128,12 @@ def export_regions(model_dir, threshold=None, n_contiguous=3, save_prefix="bindi
             regions = find_binding_regions(probs, threshold=threshold, n_contiguous=n_contiguous)
             with open(summary_file, 'a') as f:
                 for splice in sorted(regions.keys()):
-                    f.write("{rbp}, {splice}, {n_regions}, {model_type}, {threshold}, {n_contiguous}, \n".format(
+                    f.write("{rbp}, {splice}, {n_regions}, {total}, {max_length}, {model_type}, {threshold}, {n_contiguous}, \n".format(
                         rbp=rbp, 
                         splice=splice, 
-                        n_regions=len(regions[splice]), 
+                        n_regions=len(regions[splice]),
+                        total=sum([r['region_length'] for r in regions[splice]]),
+                        max_length=max([r['region_length'] for r in regions[splice]]) if len(regions[splice]) > 0 else 0,
                         model_type=model_type, 
                         threshold=threshold, 
                         n_contiguous=n_contiguous))
