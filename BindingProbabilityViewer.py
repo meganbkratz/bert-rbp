@@ -167,6 +167,10 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		self.regionSpin = pg.SpinBox(value=3, bounds=[1, None], int=True)
 		self.recallSpin = pg.SpinBox(value=0.1, bounds=[0,0.99], minStep=0.01)
 		self.precisionSpin = pg.SpinBox(value=0.9, bounds=[0,0.99], minStep=0.01)
+		self.showSequenceChk = pg.QtWidgets.QCheckBox("Show sequences")
+		#self.showSequenceChk.setChecked(True)
+		self.showFilterChk = pg.QtWidgets.QCheckBox("Show filter line")
+		self.showFilterChk.setChecked(True)
 		label1 = pg.QtWidgets.QLabel("Minimum Recall:")
 		label1.setAlignment(pg.QtCore.Qt.AlignRight)
 		label2 = pg.QtWidgets.QLabel("Minimum Precision:")
@@ -195,22 +199,24 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		grid.addWidget(self.showBtn, 0,0,1,1)
 		grid.addWidget(self.hideBtn, 0,1,1,1)
 		grid.addWidget(self.spliceTree, 1,0,3,2)
-		grid.addWidget(self.thresholdCheck, 4,0,1,1)
-		grid.addWidget(self.thresholdSpin, 4,1,1,1)
-		grid.addWidget(self.regionCheck, 5,0,1,1)
-		grid.addWidget(self.regionSpin, 5,1,1,1)
-		grid.addWidget(label1, 6,0,1,1)
-		grid.addWidget(self.recallSpin, 6,1,1,1)
-		grid.addWidget(label2, 7,0,1,1)
-		grid.addWidget(self.precisionSpin, 7,1,1,1)
-		grid.addWidget(label3, 8,0)
-		grid.addWidget(label4, 9,0)
-		grid.addWidget(self.lowestThresholdLabel, 9,1)
-		grid.addWidget(label5, 10,0)
-		grid.addWidget(self.highFScoreLabel,10,1)
+		grid.addWidget(self.showSequenceChk, 4, 0, 1,1)
+		grid.addWidget(self.showFilterChk, 5,0,1,1)
+		grid.addWidget(self.thresholdCheck, 6,0,1,1)
+		grid.addWidget(self.thresholdSpin, 6,1,1,1)
+		grid.addWidget(self.regionCheck, 7,0,1,1)
+		grid.addWidget(self.regionSpin, 7,1,1,1)
+		grid.addWidget(label1, 8,0,1,1)
+		grid.addWidget(self.recallSpin, 8,1,1,1)
+		grid.addWidget(label2, 9,0,1,1)
+		grid.addWidget(self.precisionSpin, 9,1,1,1)
+		grid.addWidget(label3, 10,0)
+		grid.addWidget(label4, 11,0)
+		grid.addWidget(self.lowestThresholdLabel, 11,1)
+		grid.addWidget(label5, 12,0)
+		grid.addWidget(self.highFScoreLabel,12,1)
 		#grid.addWidget(self.fdrLabel, 8,1,1,1)
-		grid.addWidget(self.metricsPlot, 11,0,2,2)
-		grid.addWidget(self.histogramPlot,13,0,2,2)
+		grid.addWidget(self.metricsPlot, 13,0,2,2)
+		grid.addWidget(self.histogramPlot,15,0,2,2)
 		grid.setRowStretch(0,20)
 		#grid.setContentsMargins(1,1,1,1)
 		#grid.setSpacing(1)
@@ -230,6 +236,8 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		self.thresholdCheck.stateChanged.connect(self.thresholdValueChanged)
 		self.regionCheck.stateChanged.connect(self.plot_probabilities)
 		self.regionSpin.sigValueChanged.connect(self.plot_probabilities)
+		self.showSequenceChk.stateChanged.connect(self.plot_probabilities)
+		self.showFilterChk.stateChanged.connect(self.plot_probabilities)
 		self.precisionSpin.sigValueChanged.connect(self.calculate_thresholds)
 		self.recallSpin.sigValueChanged.connect(self.calculate_thresholds)
 
@@ -514,9 +522,9 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		hues = len(probs.keys())
 		colors = {}
 
-		applyFilter=True ## todo: make this a gui option
+		applyFilter=self.showFilterChk.isChecked() ## todo: make this a gui option
 		showRegions=self.regionCheck.isChecked()
-		showSequences=False
+		showSequences=self.showSequenceChk.isChecked()
 		if showSequences:
 			symbols={
 				'A':createSymbol('A'),
@@ -572,11 +580,11 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 					self.genomePlot.plot(x=dna_indices[thresholdMask], y=probs[k][thresholdMask], pen=None, symbolBrush=color, symbolPen='k', symbol=symbol)
 				if showRegions:
 					x = np.array([a for r in regions[k] for a in r['dna_indices']]) + start
-					self.genomePlot.plot(x=x, y=[1.04+0.02*i]*len(x), connect='pairs', pen={'color':color, 'width':5})
+					self.genomePlot.plot(x=x, y=[1.04+0.01*i]*len(x), connect='pairs', pen={'color':color, 'width':5})
 				if showSequences:
 					for n in ['A', 'C', 'T', 'G']:
 						x = sequences[k]['dna_indices'][np.argwhere(sequences[k]['sequence'] == n)[:,0]]
-						self.genomePlot.plot(x=x, y=[-0.02-0.04*i]*len(x), pen=None, symbol=symbols[n], symbolPen=color, symbolBrush=color)
+						self.genomePlot.plot(x=x, y=[1.1+0.04*i]*len(x), pen=None, symbol=symbols[n], symbolPen=color, symbolBrush=color)
 			if spliced_key != k: # don't plot introns on RNA plot
 				continue
 
@@ -588,13 +596,11 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 				self.rnaPlot.plot(x=rna_indices[thresholdMask], y=probs[k][thresholdMask], symbolBrush=color, pen=None, symbolPen='k')
 			if showRegions:
 				x = [a for r in regions[k] for a in r['rna_indices']]
-				self.rnaPlot.plot(x=x, y=[1.04+0.02*i]*len(x), connect='pairs', pen={'color':color, 'width':5})
+				self.rnaPlot.plot(x=x, y=[1.04+0.01*i]*len(x), connect='pairs', pen={'color':color, 'width':5})
 			if showSequences:
 				for n in ['A', 'C', 'G', 'T']:
 					x = np.argwhere(sequences[k]['sequence'] == n)[:,0]
-					self.rnaPlot.plot(x=x, y=[-0.02-0.04*i]*len(x), pen=None, symbol=symbols[n], symbolPen=color, symbolBrush=color )
-
-
+					self.rnaPlot.plot(x=x, y=[1.1+0.04*i]*len(x), pen=None, symbol=symbols[n], symbolPen=color, symbolBrush=color)
 
 		
 if __name__ == '__main__':
