@@ -114,7 +114,11 @@ def export_regions(model_dir, threshold=None, n_contiguous=3, save_prefix="bindi
             sequence_file = probs.get('metainfo', {}).get('sequence_path')
             if sequence_file is None:
                 sequence_file = util.find_fasta_file(os.path.join(model_dir, os.listdir(model_dir)[0]))
-            sequences = load_sequence(sequence_file)
+            try:
+                sequences = load_sequence(sequence_file)
+            except FileNotFoundError:
+                sequence_file = util.find_fasta_file(os.path.join(model_dir, os.listdir(model_dir)[0]))
+                sequences = load_sequence(sequence_file)
 
             if use_dynamic_thresholding:
                 stats_file = os.path.join(config.rbp_performance_dir, model_type, rbp+'_eval_performance.csv')
