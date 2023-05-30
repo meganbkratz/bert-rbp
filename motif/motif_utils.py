@@ -384,7 +384,7 @@ def merge_motifs(motif_seqs, min_len=5, align_all_ties=True, **kwargs):
     return merged_motif_seqs, merged_motif_dict
 
 
-def merge_motifs_UPGMA(motif_seqs):
+def merge_motifs_UPGMA(motif_seqs, group_mode, threshold):
     """ Use an UPGMA algorithm to merge motifs.
 
     Arguments:
@@ -392,6 +392,15 @@ def merge_motifs_UPGMA(motif_seqs):
         {motif: {seq_idx: idx, atten_region_pos: (start, end)}}
         where seq_idx indicates indices of pos_seqs containing a motif, and
         atten_region_pos indicates where the high attention region is located.
+
+    group_mode -- (str) The mode to use for creating groups from the generated linkage tree (see scipy.cluster.hierarchy.fcluster).
+        options currently implemented are:
+            'maxclust' - merge until there are the number of groups specified by 'threshold' (below)
+            'distance' - merge groups until the within group similarity is less than 'threshold' (below) 
+    threshold -- (float or int) The threshold to use for grouping motifs
+        - if group_mode is 'maxclust' this is the number of groups that are created
+        - if group_mode is 'distance' this is the minimum within-group similarity that is allowed. threshold should be in units of alignment score
+
 
     Returns:
     merged_motif_seqs -- a nested dict with the structure:
@@ -406,6 +415,10 @@ def merge_motifs_UPGMA(motif_seqs):
     3) for each group of motifs, do alignment bookkeeping to align them and adjust sequence indexes
 
     """
+    modes = ['maxclust', 'distance']
+    if group_mode not in modes :
+        raise ValueError("group_mode: {} not recognized. Options are: {}".format(group_mode, modes))
+
     # set up aligner
     from Bio import Align
 
@@ -417,7 +430,8 @@ def merge_motifs_UPGMA(motif_seqs):
     aligner.extend_gap_score = -0.75
     aligner.internal_gap_score = -10000.0  # prohibit internal gaps
 
-    min_similarity = 5  # slightly more permissive than bert-rbps conditions
+    #min_similarity = 5  # slightly more permissive than bert-rbps conditions
+    min_similarity = threshold
 
     motifs = sorted(motif_seqs.keys())
     m = len(motifs)
@@ -441,9 +455,11 @@ def merge_motifs_UPGMA(motif_seqs):
     # create linkage matrix, do clustering
     condensed_distance = scipy.spatial.distance.squareform(distance)
     linkage_matrix = scipy.cluster.hierarchy.average(condensed_distance)
-    
-    groups = scipy.cluster.hierarchy.fcluster(linkage_matrix, max_distance, criterion='distance')
-    # groups = scipy.cluster.hierarchy.fcluster(linkage_matrix, 10, criterion='maxclust')
+
+    if group_mode == 'distance':
+        groups = scipy.cluster.hierarchy.fcluster(linkage_matrix, max_distance, criterion='distance')
+    elif group_mode == 'maxclust':
+        groups = scipy.cluster.hierarchy.fcluster(linkage_matrix, threshold, criterion='maxclust')
 
     clusters = [[] for i in range(len(set(groups)))]
     for x, y in enumerate(groups):
@@ -487,7 +503,9 @@ def merge_motifs_UPGMA(motif_seqs):
         'linkage_matrix': linkage_matrix,
         'motif_list': motifs,
         'max_distance': max_distance,
-        'similarity': similarity
+        'similarity': similarity,
+        'group_mode': group_mode,
+        'threshold': threshold
         }
     return merged_motifs, linkage_data
 
@@ -695,8 +713,8 @@ def motif_analysis(pos_seqs,
         
     linkage_data = None
     if kwargs.get('merge_method') == 'UPGMA':
-        print("* Merging similar motif instances using UPGMA method")
-        merged_motif_seqs, linkage_data = merge_motifs_UPGMA(motif_seqs)
+        print("* Merging similar motif instances using UPGMA {} method".format(kwargs['merge_group_mode']))
+        merged_motif_seqs, linkage_data = merge_motifs_UPGMA(motif_seqs, kwargs['merge_group_mode'], kwargs['merge_group_threshold'])
         merged_motif_dict = {k:merged_motif_seqs[k]['motifs'] for k in merged_motif_seqs.keys()}
     else:
         print("* Merging similar motif instances using bert-rbp method")

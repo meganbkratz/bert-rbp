@@ -51,10 +51,11 @@ def save_motifs(dir_name, merged_seqs, merged_dict=None, params=None, linkage_da
         motif_list = [m.replace('T', 'U') for m in linkage_data['motif_list']]
         import matplotlib.pyplot as plt
         plt.figure(figsize=(8, 1/24*len(motif_list)))
+        color_threshold = linkage_data['max_distance'] if params['merge_group_mode'] == 'distance' else None
         scipy.cluster.hierarchy.dendrogram(
             linkage_data['linkage_matrix'],
             labels=motif_list, orientation='right',
-            color_threshold=linkage_data['max_distance']
+            color_threshold=color_threshold
             )
         plt.tick_params(labelsize=3)
         plt.savefig(os.path.join(dir_name, 'merge_tree.pdf'))
@@ -123,14 +124,6 @@ if __name__ == '__main__':
         'kmer': 3,
         }
 
-    # run motif analysis using UPGMA
-    params['merge_method'] = 'UPGMA'
-    merged_motif_seqs, merged_motif_dict, linkage_data = utils.motif_analysis(dev_pos['seq'], dev_neg['seq'], pos_atten_scores, save_file_dir=None, **params)
-    merged_motif_seqs = convert_seqs_to_RNA(merged_motif_seqs)
-    merged_motif_dict = convert_dict_to_RNA(merged_motif_dict)
-    save_path = os.path.join(args.predict_dir, 'merged_motifs_UPGMA')
-    save_motifs(save_path, merged_motif_seqs, merged_dict=merged_motif_dict, params=params, linkage_data=linkage_data)
-
     # run motif analysis using original bert-rbp method
     params['merge_method'] = None
     merged_motif_seqs, merged_motif_dict, linkage_data = utils.motif_analysis(dev_pos['seq'], dev_neg['seq'], pos_atten_scores, save_file_dir=None, **params)
@@ -138,3 +131,27 @@ if __name__ == '__main__':
     merged_motif_dict = convert_dict_to_RNA(merged_motif_dict)
     save_path = os.path.join(args.predict_dir, 'merged_motifs_bert-rbp')
     save_motifs(save_path, merged_motif_seqs, merged_dict=merged_motif_dict, params=params, linkage_data=linkage_data)
+
+
+    # run motif analysis using UPGMA
+    params['merge_method'] = 'UPGMA'
+    params['merge_group_mode'] = 'distance'
+    params['merge_group_threshold'] = 5
+    merged_motif_seqs, merged_motif_dict, linkage_data = utils.motif_analysis(dev_pos['seq'], dev_neg['seq'], pos_atten_scores, save_file_dir=None, **params)
+    merged_motif_seqs = convert_seqs_to_RNA(merged_motif_seqs)
+    merged_motif_dict = convert_dict_to_RNA(merged_motif_dict)
+    save_path = os.path.join(args.predict_dir, 'merged_motifs_UPGMA_distance5')
+    save_motifs(save_path, merged_motif_seqs, merged_dict=merged_motif_dict, params=params, linkage_data=linkage_data)
+
+    # run motif analysis using UPGMA
+    params['merge_method'] = 'UPGMA'
+    params['merge_group_mode'] = 'maxclust'
+    params['merge_group_threshold'] = 20
+    merged_motif_seqs, merged_motif_dict, linkage_data = utils.motif_analysis(dev_pos['seq'], dev_neg['seq'], pos_atten_scores, save_file_dir=None, **params)
+    merged_motif_seqs = convert_seqs_to_RNA(merged_motif_seqs)
+    merged_motif_dict = convert_dict_to_RNA(merged_motif_dict)
+    save_path = os.path.join(args.predict_dir, 'merged_motifs_UPGMA_maxclust20')
+    save_motifs(save_path, merged_motif_seqs, merged_dict=merged_motif_dict, params=params, linkage_data=linkage_data)
+
+
+    
