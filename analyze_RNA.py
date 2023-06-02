@@ -207,7 +207,7 @@ def load_tsv_sequences(filename, tokenizer):
     return {'positives': pos_input_ids, 'negatives': neg_input_ids}
 
 
-def predict(dataset, model_path):
+def predict(dataset, model_path, output_attention=False):
     """Make binding predictions for all tensors in the dataset, using the model at model_path.
     Arguments:
     dataset    a dictionary of {name:[tensor1, tensor2, ...]}(as produced by load_tsv_sequences or load_fasta_sequences)
@@ -216,7 +216,7 @@ def predict(dataset, model_path):
     Returns a dictionary of {name:[prob1, prob2, ...]}
     """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = BertForSequenceClassification.from_pretrained(model_path, output_attentions=True)
+    model = BertForSequenceClassification.from_pretrained(model_path, output_attentions=output_attention)
     #model.config.output_attentions = True
     #model.config.output_hidden_states = True
     model = model.to(device)
@@ -226,7 +226,8 @@ def predict(dataset, model_path):
     batch_size = 32
 
     results = OrderedDict()
-    results['attention'] = {}
+    if output_attention:
+        results['attention'] = {}
 
     for name, data in dataset.items():
         if name in ['indices']:
@@ -243,16 +244,19 @@ def predict(dataset, model_path):
                 outputs = model(input_ids=batch[0], attention_mask=batch[1], token_type_ids=batch[2], labels=None)
                 #_, logits = outputs[:2] ## see modeling_bert.py line 390 for description of outputs -- right now we only get (and need) logits
                 logits = outputs[0]
-                attention = outputs[-1][-1][:,:,0,:]
+                if output_attention:
+                    attention = outputs[-1][-1][:,:,0,:]
 
             preds = logits.detach().cpu().numpy()
             predictions[i*batch_size:i*batch_size+len(batch[0])] = preds
-            attention_scores[i*batch_size:i*batch_size+len(batch[0]),:,:] = attention
+            if output_attention:
+                attention_scores[i*batch_size:i*batch_size+len(batch[0]),:,:] = attention
 
         probs = softmax(torch.tensor(predictions, dtype=torch.float32)).numpy()
 
         results[name] = probs[:,1]
-        results['attention'][name] = attention_scores
+        if output_attention:
+            results['attention'][name] = attention_scores
 
     results['indices'] = dataset.get('indices')  # just pass these through here
     return results
@@ -282,6 +286,8 @@ if __name__ == '__main__':
         the sequence file to use. If not specified, the non-training data for the RBP will be used")
     parser.add_argument("--model_path", default=None, type=str, required=True, help="The path to the model to use")
     parser.add_argument("--save_path", default=None, type=str, required=True, help="Where to save the output data.")
+    parser.add_argument("--output_attention", action='store_true', default=False, help="If true, return the attention matrix in the prediction results.")
+    parser.add_argument("--include_introns", action='store_true', default=False, help="If true, run predictions on unspliced sequences in addition to spliced sequences.")
     parser.add_argument("--kmer", type=int, default=3)
 
     args = parser.parse_args()
@@ -304,9 +310,12 @@ if __name__ == '__main__':
 
     if sequence_path[-3:] == '.fa' or sequence_path[-6:] == '.fasta':
         try:
-            #dataset = load_fasta_genome(sequence_path, tokenizer, args.kmer)
-            dataset = load_fasta_with_introns(sequence_path, tokenizer, args.kmer)
-            print("Loaded genomic sequence data from %s" % sequence_path)
+            if args.include_introns:
+                dataset = load_fasta_with_introns(sequence_path, tokenizer, args.kmer)
+                print("Loaded genomic sequence with introns from %s" % sequence_path)
+            else:
+                dataset = load_fasta_genome(sequence_path, tokenizer, args.kmer)
+                print("Loaded genomic sequence (no introns) from %s" % sequence_path)
         except FastaParsingError:
             print("Loading RNA sequence data from fasta file: %s" % sequence_path)
             dataset = load_fasta_sequences(sequence_path, tokenizer, args.kmer)
@@ -317,11 +326,9 @@ if __name__ == '__main__':
         raise Exception("Not sure how to load sequence from '%s'. It doesn't seem to be \
         a .fa, .fasta, or .tsv file" % sequence_path)
     print("Running probability predictions against model at %s ....." % model_path)
-    probs = predict(dataset, model_path)
+    probs = predict(dataset, model_path, output_attention=args.output_attention)
     probs['metainfo'] = {'model_path': model_path, 'sequence_path': sequence_path}
 
 
     save_file = args.save_path
-    if 'atten' not in save_file:
-        save_file = save_file.rsplit('.', 1)[0] + "_w_attention.pk"
     save_probabilities(probs, save_file)
