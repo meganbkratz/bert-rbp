@@ -1,14 +1,21 @@
 """Use non-training data to calculate AUROC curves. Save a file that includes the FP, TP, FN, TN, n_pos and n_neg for each threshold."""
-import os, sys
+import os, sys, argparse
 import numpy as np
 from analyze_RNA import load_probabilities
 
-dataset_path = '/proj/magnuslb/users/mkratz/bert-rbp/datasets'
+parser = argparse.ArgumentParser()
 
-RBP = sys.argv[1]
+parser.add_argument("RBP", type=str)
+parser.add_argument("--prediction_path", type=str, help="The path to the prediction file. (must have 'positives' and 'negatives')")
+parser.add_argument("--save_dir", type=str, help="Where to save the generated text file (will be named '%RBP_eval_performance.csv')")
 
-p = os.path.join(dataset_path, RBP, 'nontraining_sample_finetune', 'dev_%s_probabilities.pk'%RBP)
-probs=load_probabilities(p)
+args = parser.parse_args()
+
+#p_eval = os.path.join(dataset_path, RBP, 'nontraining_sample_finetune', 'model_mbk_nontraining_model_output.pk')
+#p_train = os.path.join(dataset_path, RBP, 'training_sample_finetune', 'train_%s_bertrbp_output.pk'%RBP)
+
+
+probs=load_probabilities(args.prediction_path)
 
 pos = probs['positives']
 neg = probs['negatives']
@@ -36,5 +43,5 @@ for i,t in enumerate(np.arange(0,1,0.01)):
 	data[i]['neg_hist'] = neg_hist[i]
 
 header = str(data.dtype.names).strip('(').strip(')').strip()
-filename = '/proj/magnuslb/users/mkratz/data/RBP_performance/%s_performance.csv'%RBP
+filename = os.path.join(args.save_dir, '%s_eval_performance.csv'%(args.RBP))
 np.savetxt(filename, data, delimiter=',', header=header, fmt=['%.2f']+['%i']*6, comments='')

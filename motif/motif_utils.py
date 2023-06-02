@@ -1,8 +1,11 @@
 #### ::: utils for DNABERT-viz motif search ::: ####
 
 import os
+import itertools
 import pandas as pd
 import numpy as np
+import scipy
+
 
 def kmer2seq(kmers):
     """
@@ -36,6 +39,10 @@ def seq2kmer(seq, k):
     """
     kmer = [seq[x:x+k] for x in range(len(seq)+1-k)]
     kmers = " ".join(kmer)
+    return kmers
+
+def seq2kmer_aslist(seq, k):
+    kmers = [seq[x:x+k] for x in range(len(seq)+1-k)]
     return kmers
 
 def contiguous_regions(condition, len_thres=5, len_thres2=9):
@@ -297,8 +304,6 @@ def merge_motifs(motif_seqs, min_len=5, align_all_ties=True, **kwargs):
             merged_motif_seqs[motif_seqs_list[i]]["atten_region_pos"] = motif_seqs[motif_seqs_list[i]]["atten_region_pos"].copy()
             merged_motif_dict[motif_seqs_list[i]] = [alignment_score_matrix[i], motif_seqs_list[i]]
     
-    print(merged_motif_dict)
-
     # for motif in sorted(motif_seqs, key=len): # query motif
     for motif in motif_seqs_list: # query motif
         alignments = []
@@ -378,6 +383,133 @@ def merge_motifs(motif_seqs, min_len=5, align_all_ties=True, **kwargs):
 
     return merged_motif_seqs, merged_motif_dict
 
+
+def merge_motifs_UPGMA(motif_seqs, group_mode, threshold):
+    """ Use an UPGMA algorithm to merge motifs.
+
+    Arguments:
+    motif_seqs -- nested dict, with the following structure:
+        {motif: {seq_idx: idx, atten_region_pos: (start, end)}}
+        where seq_idx indicates indices of pos_seqs containing a motif, and
+        atten_region_pos indicates where the high attention region is located.
+
+    group_mode -- (str) The mode to use for creating groups from the generated linkage tree (see scipy.cluster.hierarchy.fcluster).
+        options currently implemented are:
+            'maxclust' - merge until there are the number of groups specified by 'threshold' (below)
+            'distance' - merge groups until the within group similarity is less than 'threshold' (below) 
+    threshold -- (float or int) The threshold to use for grouping motifs
+        - if group_mode is 'maxclust' this is the number of groups that are created
+        - if group_mode is 'distance' this is the minimum within-group similarity that is allowed. threshold should be in units of alignment score
+
+
+    Returns:
+    merged_motif_seqs -- a nested dict with the structure:
+        {key_motif: {seq_idx: idx, atten_region_pos: (start, end), motifs:[list of motifs that have been merged]}}
+
+
+    steps:
+    1) create a pairwise distance metric for each motif in motif_seqs.keys()
+        a) use biopython PairwiseAligner to get an alignment score for each pair
+        b) since the alignment score is a measure of similarity, normalize and convert to distance (d = 1 - s/smax)
+    2) use scipy.cluster.heirarchy.average to calculate the best way to combine motifs
+    3) for each group of motifs, do alignment bookkeeping to align them and adjust sequence indexes
+
+    """
+    modes = ['maxclust', 'distance']
+    if group_mode not in modes :
+        raise ValueError("group_mode: {} not recognized. Options are: {}".format(group_mode, modes))
+
+    # set up aligner
+    from Bio import Align
+
+    aligner = Align.PairwiseAligner()
+    # set up scores to slightly favor mismatching over shifts
+    aligner.match_score = 2
+    aligner.mismatch_score = -1
+    aligner.open_gap_score = -0.75
+    aligner.extend_gap_score = -0.75
+    aligner.internal_gap_score = -10000.0  # prohibit internal gaps
+
+    #min_similarity = 5  # slightly more permissive than bert-rbps conditions
+    min_similarity = threshold
+
+    motifs = sorted(motif_seqs.keys())
+    m = len(motifs)
+
+    # create similarity matrix
+    similarity = np.zeros((m, m), dtype=float)
+    for i, j in itertools.product(range(m), range(m)):
+        if i == j:
+            continue
+        score = aligner.align(motifs[i], motifs[j]).score
+        score -= 0.75 * (len(motifs[i])+len(motifs[j]) - 10)  # adjust score so that longer motifs don't have quite as much advantage
+        similarity[i][j] = score
+
+    # convert to distance matrix
+    smax = similarity.max()
+    distance = 1 - similarity/smax
+    max_distance = 1-min_similarity/smax  # calculate max_distance for use in the clustering step
+    for i in range(len(motifs)):
+        distance[i, i] = 0
+
+    # create linkage matrix, do clustering
+    condensed_distance = scipy.spatial.distance.squareform(distance)
+    linkage_matrix = scipy.cluster.hierarchy.average(condensed_distance)
+
+    if group_mode == 'distance':
+        groups = scipy.cluster.hierarchy.fcluster(linkage_matrix, max_distance, criterion='distance')
+    elif group_mode == 'maxclust':
+        groups = scipy.cluster.hierarchy.fcluster(linkage_matrix, threshold, criterion='maxclust')
+
+    clusters = [[] for i in range(len(set(groups)))]
+    for x, y in enumerate(groups):
+        clusters[y-1].append(motifs[x])
+
+    # do alignment bookkeeping
+    merged_motifs = {}
+    for cluster in clusters:
+        key_motif = cluster[0]
+        d = {
+            'seq_idx': motif_seqs[key_motif]['seq_idx'].copy(),
+            'atten_region_pos': motif_seqs[key_motif]['atten_region_pos'].copy(),
+            'motifs': [key_motif]
+            }
+        for motif in cluster[1:]:
+            alignment = aligner.align(motif, key_motif)[0]
+
+            # calculate offset to be added/subtracted from atten_region_pos
+            a = alignment.aligned  # [motif or key_motif][aligned_segment][start or end]
+            left_offset = a[0][0][0] - a[1][0][0]  # always query - key
+            if (a[0][0][1] <= len(motif)) & (a[1][0][1] == len(key_motif)):  # inside
+                right_offset = len(motif) - a[0][0][1]
+            elif (a[0][0][1] == len(motif)) & (a[1][0][1] < len(key_motif)):  # left shift
+                right_offset = a[1][0][1] - len(key_motif)
+            elif (a[0][0][1] < len(motif)) & (a[1][0][1] == len(key_motif)):  # right shift
+                right_offset = len(motif) - a[0][0][1]
+
+            # add seq_idx back to new merged dict
+            d['seq_idx'].extend(motif_seqs[motif]['seq_idx'].copy())
+
+            # calculate new atten_region_pos after adding/subtracting offset
+            old_positions = motif_seqs[motif]['atten_region_pos'].copy()
+            new_atten_region_pos = [(pos[0]+left_offset, pos[1]-right_offset) for pos in old_positions]
+            d['atten_region_pos'].extend(new_atten_region_pos)
+
+            d['motifs'].append(motif)
+
+        merged_motifs[key_motif] = d
+
+    linkage_data = {
+        'linkage_matrix': linkage_matrix,
+        'motif_list': motifs,
+        'max_distance': max_distance,
+        'similarity': similarity,
+        'group_mode': group_mode,
+        'threshold': threshold
+        }
+    return merged_motifs, linkage_data
+
+
 def make_window(motif_seqs, pos_seqs, window_size=24):
     """
     Function to extract fixed, equal length sequences centered at high-attention motif instance.
@@ -426,6 +558,40 @@ def make_window(motif_seqs, pos_seqs, window_size=24):
 
     return new_motif_seqs
 
+def convert_seqs_to_RNA(merged_motif_seqs):
+    #import IPython
+    #IPython.embed()
+
+    converted = {}
+    for k, v in merged_motif_seqs.items():
+        k_new = k.replace('T', 'U')
+        converted[k_new] = {
+            'seq_idx': v['seq_idx'],
+            'atten_region_pos': v['atten_region_pos'],
+            }
+        new_seqs = []
+        for seq in v['seqs']:
+            new_seqs.append(seq.replace('T', 'U'))
+        converted[k_new]['seqs'] = new_seqs 
+
+    return converted
+
+def convert_dict_to_RNA(merged_motif_dict):
+    #import IPython
+    #IPython.embed()
+
+    converted = {}
+    for k, v in merged_motif_dict.items():
+        k_new = k.replace('T', 'U')
+        l = []
+        for x in v:
+            if type(x) == str:
+                l.append(x.replace('T', 'U'))
+            else:
+                l.append(x)
+        converted[k_new] = l
+
+    return converted
 ### make full pipeline
 def motif_analysis(pos_seqs,
                    neg_seqs,
@@ -544,38 +710,52 @@ def motif_analysis(pos_seqs,
     merged_motif_dict = {}
     if verbose:
         print("* Filtered {} motifs".format(len(motifs_to_keep)))
-        print("* Merging similar motif instances")
-    if 'align_cond' in kwargs:
-        merged_motif_seqs, merged_motif_dict = merge_motifs(motif_seqs, min_len=min_len, 
-                                         align_all_ties = align_all_ties,
-                                         cond=kwargs['align_cond'])
+        
+    linkage_data = None
+    if kwargs.get('merge_method') == 'UPGMA':
+        print("* Merging similar motif instances using UPGMA {} method".format(kwargs['merge_group_mode']))
+        merged_motif_seqs, linkage_data = merge_motifs_UPGMA(motif_seqs, kwargs['merge_group_mode'], kwargs['merge_group_threshold'])
+        merged_motif_dict = {k:merged_motif_seqs[k]['motifs'] for k in merged_motif_seqs.keys()}
     else:
-        merged_motif_seqs, merged_motif_dict = merge_motifs(motif_seqs, min_len=min_len,
-                                         align_all_ties = align_all_ties)
+        print("* Merging similar motif instances using bert-rbp method")
+        if 'align_cond' in kwargs:
+            merged_motif_seqs, merged_motif_dict = merge_motifs(motif_seqs, min_len=min_len, 
+                                             align_all_ties = align_all_ties,
+                                             cond=kwargs['align_cond'])
+        else:
+            merged_motif_seqs, merged_motif_dict = merge_motifs(motif_seqs, min_len=min_len,
+                                             align_all_ties = align_all_ties)
+
+
 
         
     # make fixed-length window sequences
     if verbose:
-        print("* Left {} motifs".format(len(merged_motif_seqs)))
+        print("* Left {} motifs after merge".format(len(merged_motif_seqs)))
         print("* Making fixed_length window = {}".format(window_size))
     merged_motif_seqs = make_window(merged_motif_seqs, pos_seqs, window_size=window_size)
     
     # remove motifs with only few instances
-    if verbose:
-        print("* Removing motifs with less than {} instances".format(min_n_motif))
+
     merged_motif_seqs = {k: coords for k, coords in merged_motif_seqs.items() if len(coords['seq_idx']) >= min_n_motif}
+    if verbose:
+        print("* Removing motifs with less than {} instances. Left {} motifs".format(min_n_motif, len(merged_motif_seqs.keys())))
+    merged_motif_seqs = convert_seqs_to_RNA(merged_motif_seqs)
+    merged_motif_dict = convert_dict_to_RNA(merged_motif_dict)
     
     # selecting top N motifs
-    if verbose:
-        print("* Selecting top {} motifs with highest number of instances".format(top_n_motif))
+
     num_instances = [len(instances["seq_idx"]) for motif, instances in merged_motif_seqs.items()]
     if len(num_instances)>top_n_motif:
         minimum_num = sorted(num_instances)[-top_n_motif]
         merged_motif_seqs = {k: coords for k, coords in merged_motif_seqs.items() if len(coords['seq_idx']) >= minimum_num}
+    if verbose:
+        print("* Selecting top {} motifs with highest number of instances".format(top_n_motif))
+        print("* Returning {} motifs".format(len(merged_motif_seqs)))
+
 
     if save_file_dir is not None:
         if verbose:
-            print("* Left {} motifs".format(len(merged_motif_seqs)))
             print("* Saving outputs to directory")
         os.makedirs(save_file_dir, exist_ok=True)
         
@@ -590,13 +770,18 @@ def motif_analysis(pos_seqs,
                     f.write(seq+'\n')
             # make weblogo
             seqs = [Seq(v) for i,v in enumerate(instances['seqs'])]
-            m = motifs.create(seqs)
+            #print("Seqs:", seqs)
+            m = motifs.create(seqs, alphabet='ACGU')
             
-            m.weblogo(os.path.join(save_file_dir, "motif_{:0=3}_{}_weblogo.png".format(len(instances['seq_idx']), motif)), 
-                      format='png_print', show_fineprint=False, show_ends=False, 
+            m.weblogo(os.path.join(save_file_dir, "motif_{:0=3}_{}_weblogo.eps".format(len(instances['seq_idx']), motif)), 
+                      format='eps', show_fineprint=False, show_ends=False, 
                       show_errorbars=False, color_scheme="color_custom",
                       symbols0="G", color0="orange", symbols1="A", color1="red",
                       symbols2="C", color2="blue", symbols3="TU", color3="green")
+
+            ### notes for fixing weblogo: 
+            #       1) make sure biopython is version 1.8 or greater (if you can't, edit the url in Bio/motifs/__init__.py ln506 to use https instead of http)
+            #       2) the website currently (Feb 2023) doesn't support exporting in formats other than .eps, so we get eps instead of png.
     
-    return merged_motif_seqs
+    return merged_motif_seqs, merged_motif_dict, linkage_data
 
