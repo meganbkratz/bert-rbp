@@ -568,6 +568,7 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 				# start = start_dna % 100
 				# offset = start_dna - start
 				# print("dna_index offset for {splice}: {start}".format(splice=k, start=offset))
+				# color=pg.mkColor('r')
 
 				dna_indices = np.array(probs['indices']['dna_indices'][k]) + start
 				self.genomePlot.plot(x=dna_indices, y=probs[k], symbolBrush=pg.mkBrush(color.red(), color.green(), color.green(), alpha), name=k, pen=None, symbolPen=None, symbol=symbol)
