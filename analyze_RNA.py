@@ -3,7 +3,7 @@ import argparse
 from collections import OrderedDict
 import numpy as np
 import torch
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, TensorDataset
 from Bio import SeqIO
 from src.transformers_DNABERT import BertForSequenceClassification, DNATokenizer
 from src.transformers_DNABERT.data.processors.utils import InputExample, DataProcessor, InputFeatures
@@ -43,8 +43,11 @@ def load_fasta_sequences(f, tokenizer, n_kmer):
 
         # Convert to Tensors and build dataset
         all_input_ids = torch.tensor([f.input_ids for f in features], dtype=torch.long)
+        all_attention_mask = torch.tensor([f.attention_mask for f in features], dtype=torch.long)
+        all_token_type_ids = torch.tensor([f.token_type_ids for f in features], dtype=torch.long)
+        all_labels = torch.tensor([f.label for f in features], dtype=torch.long)
 
-        datasets[splice.id] = all_input_ids
+        datasets[splice.id] = TensorDataset(all_input_ids, all_attention_mask, all_token_type_ids, all_labels)
         dataset_indices['rna_indices'][splice.id] = indices
     datasets['indices'] = dataset_indices
     return datasets
@@ -86,7 +89,7 @@ def load_fasta_genome(filename, tokenizer, n_kmer):
         all_token_type_ids = torch.tensor([f.token_type_ids for f in features], dtype=torch.long)
         all_labels = torch.tensor([f.label for f in features], dtype=torch.long)
 
-        datasets[splice.id] = all_input_ids
+        datasets[splice.id] = datasets[splice.id] = TensorDataset(all_input_ids, all_attention_mask, all_token_type_ids, all_labels)
         dataset_indices['metainfo'][splice.id] = {
             'desc': splice.description,
             'chromosome': chromosome,
@@ -249,7 +252,7 @@ def predict(dataset, model_path, output_attention=False):
             preds = logits.detach().cpu().numpy()
             predictions[i*batch_size:i*batch_size+len(batch[0])] = preds
             if output_attention:
-                attention_scores[i*batch_size:i*batch_size+len(batch[0]),:,:] = attention
+                attention_scores[i*batch_size:i*batch_size+len(batch[0]),:,:] = attention.cpu().numpy()
 
         probs = softmax(torch.tensor(predictions, dtype=torch.float32)).numpy()
 
@@ -285,8 +288,8 @@ if __name__ == '__main__':
         the sequence file to use. If not specified, the non-training data for the RBP will be used")
     parser.add_argument("--model_path", default=None, type=str, required=True, help="The path to the model to use")
     parser.add_argument("--save_path", default=None, type=str, required=True, help="Where to save the output data.")
-    parser.add_argument("--output_attention", action='store_true', default=False, help="If true, return the attention matrix in the prediction results.")
-    parser.add_argument("--include_introns", action='store_true', default=False, help="If true, run predictions on unspliced sequences in addition to spliced sequences.")
+    parser.add_argument("--output_attention", action='store_true', help="If true, return the attention matrix in the prediction results.")
+    parser.add_argument("--include_introns", action='store_true', help="If true, run predictions on unspliced sequences in addition to spliced sequences.")
     parser.add_argument("--kmer", type=int, default=3)
 
     args = parser.parse_args()
