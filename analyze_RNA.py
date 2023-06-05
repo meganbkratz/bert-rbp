@@ -245,7 +245,7 @@ def predict(dataset, model_path, output_attention=False):
                 #_, logits = outputs[:2] ## see modeling_bert.py line 390 for description of outputs -- right now we only get (and need) logits
                 logits = outputs[0]
                 if output_attention:
-                    attention = outputs[-1][-1][:,:,0,:]
+                    attention = outputs[-1][-1][:,:,0,:]  # outputs[-1 #attention][-1 #last_layer][:,:,0 #CLS token?, :]
 
             preds = logits.detach().cpu().numpy()
             predictions[i*batch_size:i*batch_size+len(batch[0])] = preds

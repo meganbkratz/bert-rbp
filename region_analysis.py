@@ -45,7 +45,7 @@ def find_binding_regions(probs, threshold=0.95, n_contiguous=3):
 
     results = {}
     for k in probs.keys():
-        if k in ['indices', 'metainfo']:
+        if k in ['indices', 'metainfo', 'attention']:
             continue
         regions = []
         sites = find_contiguous_sites(probs[k], threshold=threshold, n_contiguous=n_contiguous)

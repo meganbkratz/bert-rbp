@@ -169,6 +169,7 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		self.recallSpin = pg.SpinBox(value=0.1, bounds=[0,0.99], minStep=0.01)
 		self.precisionSpin = pg.SpinBox(value=0.9, bounds=[0,0.99], minStep=0.01)
 		self.showSequenceChk = pg.QtWidgets.QCheckBox("Show sequences")
+		self.showAttentionChk = pg.QtWidgets.QCheckBox("Show attention (can be slow)")
 		#self.showSequenceChk.setChecked(True)
 		self.showFilterChk = pg.QtWidgets.QCheckBox("Show filter line")
 		self.showFilterChk.setChecked(True)
@@ -218,6 +219,7 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		#grid.addWidget(self.fdrLabel, 8,1,1,1)
 		grid.addWidget(self.metricsPlot, 13,0,2,2)
 		grid.addWidget(self.histogramPlot,15,0,2,2)
+		grid.addWidget(self.showAttentionChk, 17, 0, 1,1)
 		grid.setRowStretch(0,20)
 		#grid.setContentsMargins(1,1,1,1)
 		#grid.setSpacing(1)
@@ -241,6 +243,7 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		self.showFilterChk.stateChanged.connect(self.plot_probabilities)
 		self.precisionSpin.sigValueChanged.connect(self.calculate_thresholds)
 		self.recallSpin.sigValueChanged.connect(self.calculate_thresholds)
+		self.showAttentionChk.stateChanged.connect(self.plot_probabilities)
 
 		self.showBtn.clicked.connect(self.showAllSplices)
 		self.hideBtn.clicked.connect(self.hideAllSplices)
@@ -256,6 +259,7 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 		self.probs = load_probabilities(probability_file)
 
 		self.spliceTree.clear()
+		self.showAttentionChk.setChecked(False)
 		self.splices = {}
 		for k in self.probs.keys():
 			if k not in ['indices', 'genomic_indices', 'metainfo', 'attention']:
@@ -605,19 +609,20 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 					x = np.argwhere(sequences[k]['sequence'] == n)[:,0]
 					self.rnaPlot.plot(x=x, y=[1.1+0.04*i]*len(x), pen=None, symbol=symbols[n], symbolPen=color, symbolBrush=color)
 
-			if probs.get('attention') is None:
-				continue
-			att = np.sum(probs['attention'][k], axis=1)
-			avg = np.zeros([3, rna_indices[-1]+int(att.shape[-1]/2)]) #array where we sum attention and counts
-			avg[2] = np.arange(rna_indices[-1]+int(att.shape[-1]/2))
-			for j in range(att.shape[0]):
-				x = np.arange(att.shape[-1]) + (rna_indices[j]-int(att.shape[-1]/2))
-				self.attentionPlot.plot(x=x[2:-2], y = att[j][2:-2])
-				avg[0, x[2]:x[-2]] += att[j][2:-2]
-				avg[1, x[2]:x[-2]] += 1
-			mask = avg[1] != 0
-			avg2 = avg[0,mask]/avg[1,mask]
-			self.attentionPlot.plot(x=avg[2][mask], y=avg2, pen=pg.mkPen('g', width=2))
+			if self.showAttentionChk.isChecked():
+				if probs.get('attention') is None:
+					continue
+				att = np.sum(probs['attention'][k], axis=1)  # sum across attention heads
+				avg = np.zeros([3, rna_indices[-1]+int(att.shape[-1]/2)]) #array where we sum attention and counts
+				avg[2] = np.arange(rna_indices[-1]+int(att.shape[-1]/2))
+				for j in range(att.shape[0]):
+					x = np.arange(att.shape[-1]) + (rna_indices[j]-int(att.shape[-1]/2))
+					self.attentionPlot.plot(x=x[2:-2], y = att[j][2:-2])
+					avg[0, x[2]:x[-2]] += att[j][2:-2]
+					avg[1, x[2]:x[-2]] += 1
+				mask = avg[1] != 0
+				avg2 = avg[0,mask]/avg[1,mask]
+				self.attentionPlot.plot(x=avg[2][mask], y=avg2, pen=pg.mkPen('g', width=2))
 
 		
 if __name__ == '__main__':
