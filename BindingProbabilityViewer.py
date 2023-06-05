@@ -612,7 +612,8 @@ class BindingProbabilityViewer(pg.QtWidgets.QWidget):
 			if self.showAttentionChk.isChecked():
 				if probs.get('attention') is None:
 					continue
-				att = np.sum(probs['attention'][k], axis=1)  # sum across attention heads
+				#att = np.sum(probs['attention'][k], axis=1)  # sum across attention heads -- doing this before saving now
+				att = probs['attention'][k]
 				avg = np.zeros([3, rna_indices[-1]+int(att.shape[-1]/2)]) #array where we sum attention and counts
 				avg[2] = np.arange(rna_indices[-1]+int(att.shape[-1]/2))
 				for j in range(att.shape[0]):

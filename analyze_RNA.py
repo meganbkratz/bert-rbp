@@ -237,7 +237,7 @@ def predict(dataset, model_path, output_attention=False):
             continue
         dataloader = DataLoader(data, batch_size=batch_size, shuffle=False)
         predictions=np.zeros([len(data), 2])
-        attention_scores = np.zeros([len(data), 12, 101])
+        attention_scores = np.zeros([len(data), 101])
 
         for i, batch in enumerate(dataloader):
             batch = tuple(t.to(device) for t in batch)
@@ -249,10 +249,11 @@ def predict(dataset, model_path, output_attention=False):
                 if output_attention:
                     attention = outputs[-1][-1][:,:,0,:]  # outputs[-1 #attention][-1 #last_layer][:,:,0 #CLS token?, :]
 
+
             preds = logits.detach().cpu().numpy()
             predictions[i*batch_size:i*batch_size+len(batch[0])] = preds
             if output_attention:
-                attention_scores[i*batch_size:i*batch_size+len(batch[0]),:,:] = attention.cpu().numpy()
+                attention_scores[i*batch_size:i*batch_size+len(batch[0]),:] = np.sum(attention.cpu().numpy(), axis=1)  # sum across attention heads
 
         probs = softmax(torch.tensor(predictions, dtype=torch.float32)).numpy()
 
