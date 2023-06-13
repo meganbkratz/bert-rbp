@@ -1,5 +1,8 @@
 import os, re
 import numpy as np
+import scipy
+from Bio import motifs, SeqIO
+from Bio.Seq import Seq
 
 
 def search_training_data(sequence_file, training_file):
@@ -48,6 +51,24 @@ def find_fasta_file(prob_file):
         if f[-13:] == 'genomic.fasta' or f[-10:] == 'genomic.fa':
             return os.path.join(species_dir, f)
     print("Unable to find .fasta file for %s. Can't plot sequences" % prob_file)
+
+def load_sequence(filename):
+
+
+    splices = [x for x in SeqIO.parse(filename, 'fasta')]
+
+    sequences = {}
+
+    for splice in splices:
+        dna = np.array([s for s in splice.seq])
+        mask = np.char.isupper(dna)
+        rna = dna[mask]
+        indices = np.argwhere(mask)[:,0]
+
+        chromosome, start, end = parse_dna_range(splice.description)
+        sequences[splice.id] = {'sequence':rna, 'dna_indices':indices+start}
+
+    return sequences
 
 
 # Functions for analyzing models and finding the best threshold to use:
@@ -118,6 +139,28 @@ def get_threshold(stats, min_recall=0.9, min_precision=0.1, mode=None):
         return valids[np.argwhere(valids['F0.2_score'] == valids['F0.2_score'].max()).flatten()]['threshold'][0]
 
 
+# motif analysis functions
+
+def load_motif(filename):
+    with open(filename, 'r') as f:
+        seqs = f.readlines()
+
+    seqs = [s.strip('\n').replace('U', 'T') for s in seqs]
+
+    m = motifs.create(seqs)
+    bg = {'A':0.3, 'C':0.2, 'G':0.2, 'T':0.3}
+    m.background = bg
+    m.pseudocounts = bg
+
+    return m
+
+
+def search_sequence_for_motif(motif, sequence):
+    results = list(motif.pssm.search(sequence, threshold=3))
+
+    return [r[0] for r in results]
+
+
 if __name__ == "__main__":
 
     sequence_file = '/home/megan/work/lnc_rna/data/sequences/TARDBP/Tardbp-human_genomic.fasta'
@@ -125,3 +168,30 @@ if __name__ == "__main__":
     neg_training_file = '/home/megan/work/lnc_rna/code/bert-rbp/RBP_training_data/TARDBP.negative.fa'
     pos_matches = search_training_data(sequence_file, pos_training_file)
     neg_matches = search_training_data(sequence_file, neg_training_file)
+
+
+# general functions
+
+def besselFilter(data, cutoff, order=1, dt=None, btype='low', bidir=True):
+    """return data passed through bessel filter"""
+
+    if dt is None:
+        dt = 1.0
+
+    b,a = scipy.signal.bessel(order, cutoff * dt, btype=btype) 
+
+    if bidir:
+        d1 = scipy.signal.lfilter(b, a, scipy.signal.lfilter(b, a, data)[::-1])[::-1]
+    else:
+        d1 = scipy.signal.lfilter(b, a, data)
+
+    return d1
+
+def load_probabilities(file_name, quiet=False):
+    if not quiet:
+        print("Loading model output from %s" % file_name)
+    import pickle
+    with open(file_name, 'rb') as f:
+        probs = pickle.load(f)
+    return probs
+
